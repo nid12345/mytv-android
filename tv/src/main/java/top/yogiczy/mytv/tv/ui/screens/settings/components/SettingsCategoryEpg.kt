@@ -50,7 +50,7 @@ fun SettingsCategoryEpg(
             SettingsListItem(
                 modifier = Modifier.focusRequester(focusRequester),
                 headlineContent = "节目单刷新时间阈值",
-                supportingContent = "时间不到${settingsViewModel.epgRefreshTimeThreshold}:00节目单将不会刷新",
+                supportingContent = "${settingsViewModel.epgRefreshTimeThreshold}:00 之前优先用已有缓存、不主动刷新",
                 trailingContent = "${settingsViewModel.epgRefreshTimeThreshold}:00",
                 onSelected = {
                     popupManager.push(focusRequester, true)

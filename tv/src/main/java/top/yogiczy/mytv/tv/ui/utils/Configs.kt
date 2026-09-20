@@ -61,6 +61,9 @@ object Configs {
         /** 是否启用直播源频道收藏 */
         IPTV_CHANNEL_FAVORITE_ENABLE,
 
+        /** 是否在频道分组栏顶部显示「换源」快速切换入口 */
+        IPTV_SOURCE_QUICK_SWITCH_ENABLE,
+
         /** 显示直播源频道收藏列表 */
         IPTV_CHANNEL_FAVORITE_LIST_VISIBLE,
 
@@ -221,6 +224,11 @@ object Configs {
         get() = SP.getBoolean(KEY.IPTV_CHANNEL_NO_SELECT_ENABLE.name, true)
         set(value) = SP.putBoolean(KEY.IPTV_CHANNEL_NO_SELECT_ENABLE.name, value)
 
+    /** 是否在频道分组栏顶部显示「换源」快速切换入口 */
+    var iptvSourceQuickSwitchEnable: Boolean
+        get() = SP.getBoolean(KEY.IPTV_SOURCE_QUICK_SWITCH_ENABLE.name, true)
+        set(value) = SP.putBoolean(KEY.IPTV_SOURCE_QUICK_SWITCH_ENABLE.name, value)
+
     /** 是否启用直播源频道收藏 */
     var iptvChannelFavoriteEnable: Boolean
         get() = SP.getBoolean(KEY.IPTV_CHANNEL_FAVORITE_ENABLE.name, true)
@@ -261,8 +269,18 @@ object Configs {
 
     /** 当前节目单来源 */
     var epgSourceCurrent: EpgSource
-        get() = Json.decodeFromString(SP.getString(KEY.EPG_SOURCE_CURRENT.name, "")
-            .ifBlank { Json.encodeToString(Constants.EPG_SOURCE_LIST.first()) })
+        get() {
+            val source = Json.decodeFromString<EpgSource>(
+                SP.getString(KEY.EPG_SOURCE_CURRENT.name, "")
+                    .ifBlank { Json.encodeToString(Constants.EPG_SOURCE_LIST.first()) }
+            )
+
+            // 老默认源指向服务器上预生成的 e.xml.gz，内容经常停在生成那一刻，
+            // 凌晨会出现「当前时刻查不到节目」，这里迁移到实时生成的 e.xml
+            return if (source.url == Constants.EPG_SOURCE_LEGACY_URL)
+                Constants.EPG_SOURCE_LIST.first()
+            else source
+        }
         set(value) = SP.putString(KEY.EPG_SOURCE_CURRENT.name, Json.encodeToString(value))
 
     /** 节目单来源列表 */

@@ -48,12 +48,15 @@ import top.yogiczy.mytv.core.data.entities.epg.EpgList.Companion.match
 import top.yogiczy.mytv.core.data.entities.epg.EpgList.Companion.recentProgramme
 import top.yogiczy.mytv.core.data.entities.epg.EpgProgramme
 import top.yogiczy.mytv.core.data.entities.epg.EpgProgrammeReserveList
+import top.yogiczy.mytv.core.data.entities.iptvsource.IptvSource
+import top.yogiczy.mytv.core.data.entities.iptvsource.IptvSourceList
 import top.yogiczy.mytv.tv.ui.material.Visible
 import top.yogiczy.mytv.tv.ui.screens.channel.ChannelScreenTopRight
 import top.yogiczy.mytv.tv.ui.screens.channel.components.ChannelInfo
 import top.yogiczy.mytv.tv.ui.screens.classicchannel.components.ClassicChannelGroupItemList
 import top.yogiczy.mytv.tv.ui.screens.classicchannel.components.ClassicChannelItemList
 import top.yogiczy.mytv.tv.ui.screens.classicchannel.components.ClassicEpgItemList
+import top.yogiczy.mytv.tv.ui.screens.classicchannel.components.ClassicSourcePanel
 import top.yogiczy.mytv.tv.ui.screens.components.rememberScreenAutoCloseState
 import top.yogiczy.mytv.tv.ui.screens.videoplayer.player.VideoPlayer
 import top.yogiczy.mytv.tv.ui.theme.MyTVTheme
@@ -83,6 +86,12 @@ fun ClassicChannelScreen(
     channelFavoriteEnabledProvider: () -> Boolean = { false },
     channelFavoriteListVisibleProvider: () -> Boolean = { false },
     onChannelFavoriteListVisibleChange: (Boolean) -> Unit = {},
+    /** 是否在分组栏顶部显示「换源」入口 */
+    sourceSwitchEnabledProvider: () -> Boolean = { false },
+    iptvSourceListProvider: () -> IptvSourceList = { IptvSourceList() },
+    currentIptvSourceProvider: () -> IptvSource = { IptvSource() },
+    onIptvSourceSelected: (IptvSource) -> Unit = {},
+    onIptvSourceDeleted: (IptvSource) -> Unit = {},
     onClose: () -> Unit = {},
 ) {
     val screenAutoCloseState = rememberScreenAutoCloseState(onTimeout = onClose)
@@ -117,10 +126,16 @@ fun ClassicChannelScreen(
             ClassicChannelGroupItemList(
                 modifier = Modifier.onSizeChanged { groupWidth = it.width },
                 channelGroupListProvider = {
-                    if (channelFavoriteEnabledProvider())
-                        ChannelGroupList(listOf(ClassicPanelScreenFavoriteChannelGroup) + channelGroupList)
+                    val groupList = if (channelFavoriteEnabledProvider())
+                        listOf(ClassicPanelScreenFavoriteChannelGroup) + channelGroupList
                     else
-                        channelGroupList
+                        channelGroupList.toList()
+
+                    // 「换源」固定排在最上面，方便随手切换订阅
+                    if (sourceSwitchEnabledProvider())
+                        ChannelGroupList(listOf(ClassicPanelScreenSwitchSourceGroup) + groupList)
+                    else
+                        ChannelGroupList(groupList)
                 },
                 initialChannelGroupProvider = {
                     if (channelFavoriteListVisible)
@@ -132,71 +147,84 @@ fun ClassicChannelScreen(
                 onChannelGroupFocused = {
                     focusedChannelGroup = it
                     onChannelFavoriteListVisibleChange(it == ClassicPanelScreenFavoriteChannelGroup)
+                    // 换源面板与节目单面板不同时出现
+                    if (it == ClassicPanelScreenSwitchSourceGroup) epgListVisible = false
                 },
                 onUserAction = { screenAutoCloseState.active() },
             )
 
-            ClassicChannelItemList(
-                modifier = Modifier
-                    .onSizeChanged { channelListWidth = it.width }
-                    .focusProperties {
-                        exit = {
-                            if (epgListVisible && it == FocusDirection.Left) {
-                                epgListVisible = false
-                                FocusRequester.Cancel
-                            } else if (!epgListVisible && it == FocusDirection.Right) {
-                                epgListVisible = true
-                                FocusRequester.Cancel
-                            } else {
-                                FocusRequester.Default
-                            }
-                        }
-                    },
-                channelGroupProvider = { focusedChannelGroup },
-                channelListProvider = {
-                    if (focusedChannelGroup == ClassicPanelScreenFavoriteChannelGroup)
-                        favoriteChannelListProvider()
-                    else
-                        focusedChannelGroup.channelList
-                },
-                epgListProvider = epgListProvider,
-                initialChannelProvider = currentChannelProvider,
-                onChannelSelected = onChannelSelected,
-                onChannelFavoriteToggle = onChannelFavoriteToggle,
-                onChannelFocused = { channel -> focusedChannel = channel },
-                showEpgProgrammeProgressProvider = showEpgProgrammeProgressProvider,
-                onUserAction = { screenAutoCloseState.active() },
-                inFavoriteModeProvider = { focusedChannelGroup == ClassicPanelScreenFavoriteChannelGroup },
-                showChannelLogoProvider = showChannelLogoProvider,
-            )
-
-            Visible({ epgListVisible }) {
-                ClassicEpgItemList(
-                    modifier = Modifier
-                        .onFocusChanged { epgListIsFocused = it.hasFocus || it.hasFocus },
-                    programmeListModifier = Modifier
-                        .width(if (epgListIsFocused) 340.dp else 268.dp),
-                    epgProvider = { epgListProvider().match(focusedChannel) },
-                    epgProgrammeReserveListProvider = {
-                        EpgProgrammeReserveList(
-                            epgProgrammeReserveListProvider().filter { it.channel == focusedChannel.name }
-                        )
-                    },
-                    supportPlaybackProvider = { supportPlaybackProvider(focusedChannel) },
-                    currentPlaybackEpgProgrammeProvider = currentPlaybackEpgProgrammeProvider,
-                    onEpgProgrammePlayback = { onEpgProgrammePlayback(focusedChannel, it) },
-                    onEpgProgrammeReserve = { onEpgProgrammeReserve(focusedChannel, it) },
+            if (focusedChannelGroup == ClassicPanelScreenSwitchSourceGroup) {
+                ClassicSourcePanel(
+                    modifier = Modifier.onSizeChanged { channelListWidth = it.width },
+                    iptvSourceListProvider = iptvSourceListProvider,
+                    currentIptvSourceProvider = currentIptvSourceProvider,
+                    onIptvSourceSelected = onIptvSourceSelected,
+                    onIptvSourceDeleted = onIptvSourceDeleted,
                     onUserAction = { screenAutoCloseState.active() },
                 )
-            }
-            Visible({ !epgListVisible }) {
-                ClassicPanelScreenShowEpgTip(
+            } else {
+                ClassicChannelItemList(
                     modifier = Modifier
-                        .background(MaterialTheme.colorScheme.surface.copy(0.7f))
-                        .padding(horizontal = 4.dp)
-                        .focusable(),
-                    onTap = { epgListVisible = true },
+                        .onSizeChanged { channelListWidth = it.width }
+                        .focusProperties {
+                            exit = {
+                                if (epgListVisible && it == FocusDirection.Left) {
+                                    epgListVisible = false
+                                    FocusRequester.Cancel
+                                } else if (!epgListVisible && it == FocusDirection.Right) {
+                                    epgListVisible = true
+                                    FocusRequester.Cancel
+                                } else {
+                                    FocusRequester.Default
+                                }
+                            }
+                        },
+                    channelGroupProvider = { focusedChannelGroup },
+                    channelListProvider = {
+                        if (focusedChannelGroup == ClassicPanelScreenFavoriteChannelGroup)
+                            favoriteChannelListProvider()
+                        else
+                            focusedChannelGroup.channelList
+                    },
+                    epgListProvider = epgListProvider,
+                    initialChannelProvider = currentChannelProvider,
+                    onChannelSelected = onChannelSelected,
+                    onChannelFavoriteToggle = onChannelFavoriteToggle,
+                    onChannelFocused = { channel -> focusedChannel = channel },
+                    showEpgProgrammeProgressProvider = showEpgProgrammeProgressProvider,
+                    onUserAction = { screenAutoCloseState.active() },
+                    inFavoriteModeProvider = { focusedChannelGroup == ClassicPanelScreenFavoriteChannelGroup },
+                    showChannelLogoProvider = showChannelLogoProvider,
                 )
+
+                Visible({ epgListVisible }) {
+                    ClassicEpgItemList(
+                        modifier = Modifier
+                            .onFocusChanged { epgListIsFocused = it.hasFocus || it.hasFocus },
+                        programmeListModifier = Modifier
+                            .width(if (epgListIsFocused) 340.dp else 268.dp),
+                        epgProvider = { epgListProvider().match(focusedChannel) },
+                        epgProgrammeReserveListProvider = {
+                            EpgProgrammeReserveList(
+                                epgProgrammeReserveListProvider().filter { it.channel == focusedChannel.name }
+                            )
+                        },
+                        supportPlaybackProvider = { supportPlaybackProvider(focusedChannel) },
+                        currentPlaybackEpgProgrammeProvider = currentPlaybackEpgProgrammeProvider,
+                        onEpgProgrammePlayback = { onEpgProgrammePlayback(focusedChannel, it) },
+                        onEpgProgrammeReserve = { onEpgProgrammeReserve(focusedChannel, it) },
+                        onUserAction = { screenAutoCloseState.active() },
+                    )
+                }
+                Visible({ !epgListVisible }) {
+                    ClassicPanelScreenShowEpgTip(
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.surface.copy(0.7f))
+                            .padding(horizontal = 4.dp)
+                            .focusable(),
+                        onTap = { epgListVisible = true },
+                    )
+                }
             }
         }
     }
@@ -278,6 +306,13 @@ private fun ClassicPanelScreenShowEpgTip(
 }
 
 val ClassicPanelScreenFavoriteChannelGroup = ChannelGroup(name = "我的收藏")
+
+/**
+ * 「换源」伪分组
+ *
+ * 它不是真的频道分组，只是分组栏里的一个入口；选中后右侧会换成订阅列表。
+ */
+val ClassicPanelScreenSwitchSourceGroup = ChannelGroup(name = "换源")
 
 @Preview(device = "id:Android TV (720p)")
 @Composable

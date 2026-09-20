@@ -59,6 +59,22 @@ fun SettingsCategoryIptv(
 
         item {
             SettingsListItem(
+                headlineContent = "直播源快速切换",
+                supportingContent = if (settingsViewModel.iptvSourceQuickSwitchEnable)
+                    "频道分组栏顶部显示「换源」入口，可直接切换订阅链接"
+                else "已隐藏「换源」入口",
+                trailingContent = {
+                    Switch(settingsViewModel.iptvSourceQuickSwitchEnable, null)
+                },
+                onSelected = {
+                    settingsViewModel.iptvSourceQuickSwitchEnable =
+                        !settingsViewModel.iptvSourceQuickSwitchEnable
+                },
+            )
+        }
+
+        item {
+            SettingsListItem(
                 headlineContent = "换台反转",
                 supportingContent = if (settingsViewModel.iptvChannelChangeFlip) "方向键上：下一个频道；方向键下：上一个频道"
                 else "方向键上：上一个频道；方向键下：下一个频道",

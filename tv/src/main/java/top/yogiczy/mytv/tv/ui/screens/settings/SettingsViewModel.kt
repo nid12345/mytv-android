@@ -128,6 +128,14 @@ class SettingsViewModel : ViewModel() {
             Configs.iptvChannelFavoriteEnable = value
         }
 
+    private var _iptvSourceQuickSwitchEnable by mutableStateOf(Configs.iptvSourceQuickSwitchEnable)
+    var iptvSourceQuickSwitchEnable: Boolean
+        get() = _iptvSourceQuickSwitchEnable
+        set(value) {
+            _iptvSourceQuickSwitchEnable = value
+            Configs.iptvSourceQuickSwitchEnable = value
+        }
+
     private var _iptvChannelFavoriteListVisible by mutableStateOf(Configs.iptvChannelFavoriteListVisible)
     var iptvChannelFavoriteListVisible: Boolean
         get() = _iptvChannelFavoriteListVisible
@@ -376,6 +384,7 @@ class SettingsViewModel : ViewModel() {
         _iptvPlayableHostList = Configs.iptvPlayableHostList
         _iptvChannelNoSelectEnable = Configs.iptvChannelNoSelectEnable
         _iptvChannelFavoriteEnable = Configs.iptvChannelFavoriteEnable
+        _iptvSourceQuickSwitchEnable = Configs.iptvSourceQuickSwitchEnable
         _iptvChannelFavoriteListVisible = Configs.iptvChannelFavoriteListVisible
         _iptvChannelFavoriteList = Configs.iptvChannelFavoriteList
         _iptvChannelFavoriteChangeBoundaryJumpOut = Configs.iptvChannelFavoriteChangeBoundaryJumpOut

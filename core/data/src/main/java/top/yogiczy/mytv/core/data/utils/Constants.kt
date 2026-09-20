@@ -47,25 +47,31 @@ object Constants {
 
     /**
      * 节目单来源
+     *
+     * 第一个是默认源，其余作为「补齐源」：默认源对某些频道没有节目时，
+     * 会自动从补齐源里取这些频道的节目（见 EpgRepository）。
      */
     val EPG_SOURCE_LIST = EpgSourceList(
         listOf(
             /**
-             * 国内（四川电信）直连可达，作为默认节目单
+             * 老张的EPG，国内（四川电信）直连可达，作为默认节目单。
+             *
+             * 这里必须用实时生成的 `e.xml`：同目录下的 `e.xml.gz` 是预生成文件，
+             * 拿到手时内容可能已经停在生成时刻，凌晨就会出现「当前时刻查不到节目」的断档。
              */
             EpgSource(
                 name = "默认节目单 老张的EPG",
-                url = "http://epg.51zmt.top:8000/e.xml.gz",
+                url = "http://epg.51zmt.top:8000/e.xml",
             ),
             /**
-             * 备用节目单：频道更多，大陆网络下作为可切换的备选
+             * 备用/补齐节目单：频道更多（含翡翠台等），国内可直连
              */
             EpgSource(
                 name = "备用节目单 112114",
                 url = "https://epg.112114.xyz/pp.xml",
             ),
             /**
-             * 备用节目单：海外站点，作为最后的备选
+             * 备用/补齐节目单：覆盖天数更长，海外站点
              */
             EpgSource(
                 name = "备用节目单 Fanmingming",
@@ -75,9 +81,19 @@ object Constants {
     )
 
     /**
-     * 节目单刷新时间阈值（小时）
+     * 历史默认节目单地址
+     *
+     * 老配置里存的是这个预生成地址，读取配置时会被迁移成实时地址。
      */
-    const val EPG_REFRESH_TIME_THRESHOLD = 2 // 不到2点不刷新
+    const val EPG_SOURCE_LEGACY_URL = "http://epg.51zmt.top:8000/e.xml.gz"
+
+    /**
+     * 节目单刷新时间阈值（小时）
+     *
+     * 在这个时间点之前优先沿用已有缓存，避免凌晨去拉源站还没生成的数据；
+     * 但不会因此返回空节目单——缓存里当前时刻查不到节目时仍会照常重新拉取。
+     */
+    const val EPG_REFRESH_TIME_THRESHOLD = 2
 
     /**
      * Git最新版本信息

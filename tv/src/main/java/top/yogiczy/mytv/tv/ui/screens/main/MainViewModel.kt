@@ -3,6 +3,7 @@ package top.yogiczy.mytv.tv.ui.screens.main
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,15 +32,44 @@ class MainViewModel : ViewModel() {
     private val _uiState = MutableStateFlow<MainUiState>(MainUiState.Loading())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
+    /** 线路测速任务，切换直播源时用来取消上一次测速 */
+    private var lineSpeedJob: Job? = null
+
     init {
         init()
     }
 
     fun init() {
+        lineSpeedJob?.cancel()
         viewModelScope.launch {
             _uiState.value = MainUiState.Loading()
             refreshChannel()
+            // 线路测速和节目单都慢，并行跑：频道先显示出来，两边各自完成后再刷新界面
+            lineSpeedJob = launch { sortChannelLinesBySpeed() }
             refreshEpg()
+        }
+    }
+
+    /**
+     * 后台给各频道的多条线路测速，按播放效果重排
+     *
+     * 先用源里的原始顺序把频道显示出来，测速完成后再替换成重排结果；
+     * 当前正在播放的线路不受影响（重排后会按地址重新定位线路下标）。
+     */
+    private suspend fun sortChannelLinesBySpeed() {
+        val ready = _uiState.value as? MainUiState.Ready ?: return
+
+        runCatching {
+            val sorted = IptvRepository(Configs.iptvSourceCurrent)
+                .sortChannelLinesBySpeed(ready.channelGroupList)
+
+            val latest = _uiState.value as? MainUiState.Ready ?: return@runCatching
+            if (sorted.size != latest.channelGroupList.size) return@runCatching
+            if (sorted == latest.channelGroupList) return@runCatching
+
+            _uiState.value = latest.copy(channelGroupList = sorted)
+        }.onFailure {
+            // 测速失败不影响正常使用，保持源里原有顺序
         }
     }
 
@@ -108,7 +138,11 @@ class MainViewModel : ViewModel() {
 
             flow {
                 emit(
-                    EpgRepository(Configs.epgSourceCurrent).getEpgList(
+                    EpgRepository(
+                        source = Configs.epgSourceCurrent,
+                        // 其余节目单来源作为补齐源：主源缺哪个频道，就从这里补哪个频道
+                        fallbackSources = Constants.EPG_SOURCE_LIST,
+                    ).getEpgList(
                         filteredChannels = channelGroupList.channelList.map { it.epgName },
                         refreshTimeThreshold = Configs.epgRefreshTimeThreshold,
                     )

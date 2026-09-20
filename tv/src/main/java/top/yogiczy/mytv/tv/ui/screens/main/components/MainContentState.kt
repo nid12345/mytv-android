@@ -262,6 +262,27 @@ class MainContentState(
         }
     }
 
+    /**
+     * 频道列表被重建（例如线路按测速结果重排）后，把当前频道重新绑定到新对象上
+     *
+     * 频道是按值比较的，列表重建后旧对象就找不到了，换台会跳到错误的位置；
+     * 这里按频道名重新绑定，并把线路下标重新定位到正在播放的那条线路上。
+     */
+    fun onChannelGroupListChanged() {
+        val newChannel = channelGroupListProvider().channelList
+            .firstOrNull { it.name == _currentChannel.name } ?: return
+        if (newChannel == _currentChannel) return
+
+        val playingUrl = _currentChannel.urlList.getOrNull(_currentChannelUrlIdx)
+
+        _currentChannel = newChannel
+
+        if (playingUrl != null) {
+            val idx = newChannel.urlList.indexOf(playingUrl)
+            if (idx >= 0) _currentChannelUrlIdx = idx
+        }
+    }
+
     fun changeCurrentChannelToPrev() {
         changeCurrentChannel(getPrevChannel())
     }

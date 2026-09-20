@@ -15,13 +15,13 @@ abstract class FileCacheRepository(
     private fun getCacheFile() =
         if (isFullPath) File(fileName) else File(Globals.cacheDir, fileName)
 
-    private suspend fun getCacheData(): String? = withContext(Dispatchers.IO) {
+    protected suspend fun getCacheData(): String? = withContext(Dispatchers.IO) {
         val file = getCacheFile()
         if (file.exists()) file.readText()
         else null
     }
 
-    private suspend fun setCacheData(data: String) = withContext(Dispatchers.IO) {
+    protected suspend fun setCacheData(data: String) = withContext(Dispatchers.IO) {
         val file = getCacheFile()
         file.writeText(data)
     }

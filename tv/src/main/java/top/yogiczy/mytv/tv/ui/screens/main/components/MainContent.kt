@@ -2,6 +2,7 @@ package top.yogiczy.mytv.tv.ui.screens.main.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -16,6 +17,7 @@ import top.yogiczy.mytv.core.data.entities.epg.EpgList
 import top.yogiczy.mytv.core.data.entities.epg.EpgList.Companion.match
 import top.yogiczy.mytv.core.data.entities.epg.EpgList.Companion.recentProgramme
 import top.yogiczy.mytv.core.data.entities.epg.EpgProgrammeReserveList
+import top.yogiczy.mytv.core.data.entities.iptvsource.IptvSourceList
 import top.yogiczy.mytv.core.data.repositories.epg.EpgRepository
 import top.yogiczy.mytv.core.data.repositories.iptv.IptvRepository
 import top.yogiczy.mytv.core.data.utils.ChannelUtil
@@ -34,6 +36,7 @@ import top.yogiczy.mytv.tv.ui.screens.dlna.DlnaCastScreen
 import top.yogiczy.mytv.tv.ui.screens.epg.EpgProgrammeProgressScreen
 import top.yogiczy.mytv.tv.ui.screens.epg.EpgScreen
 import top.yogiczy.mytv.tv.ui.screens.epgreverse.EpgReverseScreen
+import top.yogiczy.mytv.tv.ui.screens.main.MainViewModel
 import top.yogiczy.mytv.tv.ui.screens.monitor.MonitorScreen
 import top.yogiczy.mytv.tv.ui.screens.quickop.QuickOpScreen
 import top.yogiczy.mytv.tv.ui.screens.settings.SettingsScreen
@@ -58,6 +61,7 @@ fun MainContent(
     settingsViewModel: SettingsViewModel = viewModel(),
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val mainViewModel: MainViewModel = viewModel()
 
     val videoPlayerState =
         rememberVideoPlayerState(defaultDisplayModeProvider = { settingsViewModel.videoPlayerDisplayMode })
@@ -70,6 +74,12 @@ fun MainContent(
         filteredChannelGroupListProvider().channelList.getOrNull(idx)?.let { channel ->
             mainContentState.changeCurrentChannel(channel)
         }
+    }
+
+    // 线路测速会在后台重排 urlList，列表一变化就把当前频道重新绑到新对象上
+    val currentChannelGroupList = filteredChannelGroupListProvider()
+    LaunchedEffect(currentChannelGroupList) {
+        mainContentState.onChannelGroupListChanged()
     }
 
     Box(
@@ -432,6 +442,26 @@ fun MainContent(
             channelFavoriteListVisibleProvider = { settingsViewModel.iptvChannelFavoriteListVisible },
             onChannelFavoriteListVisibleChange = {
                 settingsViewModel.iptvChannelFavoriteListVisible = it
+            },
+            sourceSwitchEnabledProvider = { settingsViewModel.iptvSourceQuickSwitchEnable },
+            iptvSourceListProvider = { settingsViewModel.iptvSourceList },
+            currentIptvSourceProvider = { settingsViewModel.iptvSourceCurrent },
+            onIptvSourceSelected = { iptvSource ->
+                if (settingsViewModel.iptvSourceCurrent != iptvSource) {
+                    settingsViewModel.iptvSourceCurrent = iptvSource
+                    settingsViewModel.iptvLastChannelIdx = 0
+                    settingsViewModel.iptvChannelGroupHiddenList = emptySet()
+                    coroutineScope.launch {
+                        IptvRepository(settingsViewModel.iptvSourceCurrent).clearCache()
+                    }
+                    mainContentState.isChannelScreenVisible = false
+                    Snackbar.show("已切换直播源：${iptvSource.name}")
+                    mainViewModel.init()
+                }
+            },
+            onIptvSourceDeleted = { iptvSource ->
+                settingsViewModel.iptvSourceList =
+                    IptvSourceList(settingsViewModel.iptvSourceList - iptvSource)
             },
             onClose = { mainContentState.isChannelScreenVisible = false },
         )

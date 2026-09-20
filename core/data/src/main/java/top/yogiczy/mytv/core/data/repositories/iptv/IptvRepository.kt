@@ -22,6 +22,7 @@ class IptvRepository(
     source.isLocal,
 ) {
     private val log = Logger.create(javaClass.simpleName)
+    private val lineSpeedRepository by lazy { ChannelLineSpeedRepository(source) }
 
     /**
      * 获取直播源数据
@@ -67,11 +68,25 @@ class IptvRepository(
                 ).joinToString()
             )
 
-            return groupList
+            return lineSpeedRepository.sortByCache(groupList, lineSpeedRepository.load())
         } catch (ex: Exception) {
             log.e("获取直播源失败", ex)
             throw Exception(ex)
         }
+    }
+
+    /**
+     * 给所有线路测速，并按播放效果重排每个频道的线路
+     *
+     * 测速比较耗时，调用方应在后台执行，不要阻塞界面。
+     */
+    suspend fun sortChannelLinesBySpeed(channelGroupList: ChannelGroupList): ChannelGroupList {
+        val urls = channelGroupList
+            .flatMap { group -> group.channelList.flatMap { channel -> channel.urlList } }
+
+        val table = lineSpeedRepository.refresh(urls)
+
+        return lineSpeedRepository.sortByCache(channelGroupList, table)
     }
 
     override suspend fun clearCache() {
