@@ -12,6 +12,23 @@
     <p>使用Android原生开发的视频播放软件</p>
 </div>
 
+## 关于本仓库
+
+本仓库是 [yaoxieyoulei/mytv-android](https://github.com/yaoxieyoulei/mytv-android) 的**个人定制分支**，
+完整保留原项目的界面设计、排版与全部功能，仅在此基础上做少量自用调整：
+
+- 默认直播源改为自用源
+- 节目单默认源改为国内可直连的源，并修复了频道名写法差异（如 `CCTV-1` 与 `CCTV1`）导致的节目单匹配失败
+- 修复台标不显示的问题：台标默认开启；按台标仓库的命名规范换算文件名（央视由 `CCTV-1` 换算为 `CCTV1`）；
+  并为主地址补充国内镜像与公共 CDN 两份备用地址，主地址不可达时自动回退
+- 新增 DLNA 投屏：播放界面快捷操作栏第一项「投屏」，可把当前频道推送到局域网内的电视、电视盒子播放
+
+**特别感谢原作者 [@yaoxieyoulei](https://github.com/yaoxieyoulei)**，以及
+[my-tv](https://github.com/lizongying/my-tv)、[live](https://github.com/fanmingming/live) 等开源项目，
+本项目界面与全部基础能力均来自他们。
+
+> 本分支仅供个人学习与自用，请勿用于任何商业用途。
+
 ## 使用
 
 ### 操作方式

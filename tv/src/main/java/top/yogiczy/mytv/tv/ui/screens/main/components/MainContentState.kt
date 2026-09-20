@@ -97,6 +97,13 @@ class MainContentState(
             _isChannelUrlScreenVisible = value
         }
 
+    private var _isDlnaCastScreenVisible by mutableStateOf(false)
+    var isDlnaCastScreenVisible
+        get() = _isDlnaCastScreenVisible
+        set(value) {
+            _isDlnaCastScreenVisible = value
+        }
+
     private var _isVideoPlayerDisplayModeScreenVisible by mutableStateOf(false)
     var isVideoPlayerDisplayModeScreenVisible
         get() = _isVideoPlayerDisplayModeScreenVisible

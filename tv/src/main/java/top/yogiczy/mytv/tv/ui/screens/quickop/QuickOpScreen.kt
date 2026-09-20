@@ -84,6 +84,7 @@ fun QuickOpScreen(
     onShowVideoPlayerDisplayMode: () -> Unit = {},
     onShowMoreSettings: () -> Unit = {},
     onClearCache: () -> Unit = {},
+    onShowDlnaCast: () -> Unit = {},
     onClose: () -> Unit = {},
 ) {
     val screenAutoCloseState = rememberScreenAutoCloseState(onTimeout = onClose)
@@ -115,6 +116,7 @@ fun QuickOpScreen(
             onShowVideoPlayerDisplayMode = onShowVideoPlayerDisplayMode,
             onShowMoreSettings = onShowMoreSettings,
             onClearCache = onClearCache,
+            onShowDlnaCast = onShowDlnaCast,
             onUserAction = { screenAutoCloseState.active() },
         )
     }
@@ -259,6 +261,7 @@ private fun QuickOpScreenBottom(
     onShowVideoPlayerDisplayMode: () -> Unit = {},
     onShowMoreSettings: () -> Unit = {},
     onClearCache: () -> Unit = {},
+    onShowDlnaCast: () -> Unit = {},
     onUserAction: () -> Unit = {},
 ) {
     val childPadding = rememberChildPadding()
@@ -284,6 +287,7 @@ private fun QuickOpScreenBottom(
             )
 
             QuickOpBtnList(
+                onShowDlnaCast = onShowDlnaCast,
                 onShowEpg = onShowEpg,
                 onShowChannelUrl = onShowChannelUrl,
                 onShowVideoPlayerController = onShowVideoPlayerController,

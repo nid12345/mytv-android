@@ -16,6 +16,7 @@ import top.yogiczy.mytv.core.data.entities.epgsource.EpgSource
 import top.yogiczy.mytv.core.data.network.await
 import top.yogiczy.mytv.core.data.repositories.FileCacheRepository
 import top.yogiczy.mytv.core.data.repositories.epg.fetcher.EpgFetcher
+import top.yogiczy.mytv.core.data.utils.ChannelName
 import top.yogiczy.mytv.core.data.utils.Logger
 import java.io.StringReader
 import java.text.SimpleDateFormat
@@ -49,6 +50,17 @@ class EpgRepository(
         parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
         parser.setInput(StringReader(xmlString))
 
+        // 预先把待匹配频道归一化，避免遍历整份节目单时反复做正则运算
+        val filteredNameSet = filteredChannels
+            .map { ChannelName.normalize(it) }
+            .filter { it.isNotBlank() }
+            .toHashSet()
+
+        val filteredCoreNameSet = filteredChannels
+            .mapNotNull { ChannelName.coreKey(it) }
+            .filter { it.startsWith("cctv") }
+            .toHashSet()
+
         val epgMap = mutableMapOf<String, Epg>()
 
         var eventType = parser.eventType
@@ -60,7 +72,7 @@ class EpgRepository(
                         parser.nextTag()
                         val channelName = parser.nextText()
 
-                        if (filteredChannels.isEmpty() || filteredChannels.contains(channelName.lowercase())) {
+                        if (isChannelWanted(channelName, filteredNameSet, filteredCoreNameSet)) {
                             epgMap[channelId] = Epg(channelName, EpgProgrammeList())
                         }
                     } else if (parser.name == "programme") {
@@ -94,6 +106,28 @@ class EpgRepository(
     }
 
     /**
+     * 判断节目单里的频道是否为当前直播源需要的频道
+     *
+     * 与 [top.yogiczy.mytv.core.data.entities.epg.EpgList.match] 保持同一套判定规则：
+     * 先按归一化名称精确比较，央视系列再退化为核心标识比较。
+     * 这里使用预先算好的集合，避免在遍历整份节目单时重复做正则运算。
+     */
+    private fun isChannelWanted(
+        rawName: String,
+        filteredNameSet: Set<String>,
+        filteredCoreNameSet: Set<String>,
+    ): Boolean {
+        if (filteredNameSet.isEmpty()) return false
+
+        val normalized = ChannelName.normalize(rawName)
+        if (normalized.isBlank()) return false
+        if (normalized in filteredNameSet) return true
+
+        val core = ChannelName.coreKey(rawName) ?: return false
+        return core.startsWith("cctv") && core in filteredCoreNameSet
+    }
+
+    /**
      * 获取节目单列表
      */
     suspend fun getEpgList(
@@ -115,7 +149,8 @@ class EpgRepository(
                 Json.encodeToString(
                     parseFromXml(
                         xmlString,
-                        filteredChannels.map { it.lowercase() },
+                        // 归一化在 parseFromXml 内部完成，这里传原始名称即可
+                        filteredChannels,
                     )
                 )
             }

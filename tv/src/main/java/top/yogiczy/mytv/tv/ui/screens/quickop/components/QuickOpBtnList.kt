@@ -19,6 +19,7 @@ import top.yogiczy.mytv.tv.ui.utils.focusOnLaunched
 @Composable
 fun QuickOpBtnList(
     modifier: Modifier = Modifier,
+    onShowDlnaCast: () -> Unit = {},
     onShowEpg: () -> Unit = {},
     onShowChannelUrl: () -> Unit = {},
     onShowVideoPlayerController: () -> Unit = {},
@@ -45,6 +46,13 @@ fun QuickOpBtnList(
         item {
             QuickOpBtn(
                 modifier = Modifier.focusOnLaunched(),
+                title = { Text("投屏") },
+                onSelect = onShowDlnaCast,
+            )
+        }
+
+        item {
+            QuickOpBtn(
                 title = { Text("节目单") },
                 onSelect = onShowEpg,
             )

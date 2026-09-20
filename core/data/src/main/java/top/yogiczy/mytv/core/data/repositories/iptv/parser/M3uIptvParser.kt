@@ -6,6 +6,8 @@ import top.yogiczy.mytv.core.data.entities.channel.Channel
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroup
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList
 import top.yogiczy.mytv.core.data.entities.channel.ChannelList
+import top.yogiczy.mytv.core.data.utils.ChannelName
+import top.yogiczy.mytv.core.data.utils.Constants
 
 /**
  * m3u直播源解析
@@ -48,11 +50,15 @@ class M3uIptvParser : IptvParser {
             ChannelGroup(
                 name = groupEntry.key,
                 channelList = ChannelList(groupEntry.value.groupBy { it.name }.map { nameEntry ->
+                    val channelName = nameEntry.value.first().channelName
+
                     Channel(
                         name = nameEntry.key,
-                        epgName = nameEntry.value.first().channelName,
+                        epgName = channelName,
                         urlList = nameEntry.value.map { it.url }.distinct(),
-                        logo = nameEntry.value.first().logo
+                        // 直播源没给台标地址时，按频道名到台标仓库取一个
+                        logo = nameEntry.value.first().logo?.takeIf { it.isNotBlank() }
+                            ?: "${Constants.CHANNEL_LOGO_SOURCE}/${ChannelName.logoFileName(channelName)}.png"
                     )
                 })
             )

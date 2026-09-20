@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 import top.yogiczy.mytv.core.data.entities.channel.Channel
 import top.yogiczy.mytv.core.data.entities.channel.ChannelList
 import top.yogiczy.mytv.core.data.entities.epg.Epg.Companion.recentProgramme
+import top.yogiczy.mytv.core.data.utils.ChannelName
 
 /**
  * 频道节目单列表
@@ -32,7 +33,10 @@ data class EpgList(
             if (isEmpty()) return null
 
             return matchCache.getOrPut(channel.epgName) {
-                firstOrNull { epg -> epg.channel.equals(channel.epgName, ignoreCase = true) } ?: Epg()
+                // 直播源与节目单的频道命名常不一致（CCTV-1 / CCTV1），做归一化比较
+                firstOrNull { epg -> ChannelName.matches(epg.channel, channel.epgName) }
+                    ?: firstOrNull { epg -> ChannelName.matches(epg.channel, channel.name) }
+                    ?: Epg()
             }
         }
 

@@ -30,6 +30,7 @@ import top.yogiczy.mytv.tv.ui.screens.channel.rememberChannelNumberSelectState
 import top.yogiczy.mytv.tv.ui.screens.channelurl.ChannelUrlScreen
 import top.yogiczy.mytv.tv.ui.screens.classicchannel.ClassicChannelScreen
 import top.yogiczy.mytv.tv.ui.screens.datetime.DatetimeScreen
+import top.yogiczy.mytv.tv.ui.screens.dlna.DlnaCastScreen
 import top.yogiczy.mytv.tv.ui.screens.epg.EpgProgrammeProgressScreen
 import top.yogiczy.mytv.tv.ui.screens.epg.EpgScreen
 import top.yogiczy.mytv.tv.ui.screens.epgreverse.EpgReverseScreen
@@ -334,6 +335,10 @@ fun MainContent(
                 mainContentState.isQuickOpScreenVisible = false
                 mainContentState.isVideoPlayerDisplayModeScreenVisible = true
             },
+            onShowDlnaCast = {
+                mainContentState.isQuickOpScreenVisible = false
+                mainContentState.isDlnaCastScreenVisible = true
+            },
             onShowMoreSettings = {
                 mainContentState.isQuickOpScreenVisible = false
                 mainContentState.isSettingsScreenVisible = true
@@ -347,6 +352,17 @@ fun MainContent(
                 }
             },
             onClose = { mainContentState.isQuickOpScreenVisible = false },
+        )
+    }
+
+    PopupContent(
+        visibleProvider = { mainContentState.isDlnaCastScreenVisible },
+        onDismissRequest = { mainContentState.isDlnaCastScreenVisible = false },
+    ) {
+        DlnaCastScreen(
+            channelProvider = { mainContentState.currentChannel },
+            channelUrlIdxProvider = { mainContentState.currentChannelUrlIdx },
+            onClose = { mainContentState.isDlnaCastScreenVisible = false },
         )
     }
 

@@ -2,6 +2,7 @@ package top.yogiczy.mytv.tv.ui.screens.videoplayer.player
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import android.view.SurfaceView
 import android.view.TextureView
 import androidx.annotation.OptIn
@@ -67,13 +68,33 @@ class Media3VideoPlayer(
             )
 
 
-        MediaCodecVideoRenderer.skipMultipleFramesOnSameVsync =
-            Configs.videoPlayerSkipMultipleFramesOnSameVSync
+        applySkipMultipleFramesOnSameVsync()
         return ExoPlayer
             .Builder(context)
             .setRenderersFactory(renderersFactory)
             .build()
             .apply { playWhenReady = true }
+    }
+
+    /**
+     * 应用「跳过同一 VSync 渲染多帧」开关
+     *
+     * 该开关对应 MediaCodecVideoRenderer 上的一个静态字段，它并非 media3 正式发布的 API，
+     * 只存在于随源码一并构建的定制 media3 中。这里通过反射设置：
+     * 定制 media3 下开关正常工作，标准 media3 下则安全跳过，
+     * 两种情况下都不会因为缺少该字段而导致编译或运行失败。
+     */
+    private fun applySkipMultipleFramesOnSameVsync() {
+        val enabled = Configs.videoPlayerSkipMultipleFramesOnSameVSync
+
+        runCatching {
+            MediaCodecVideoRenderer::class.java
+                .getDeclaredField("skipMultipleFramesOnSameVsync")
+                .apply { isAccessible = true }
+                .setBoolean(null, enabled)
+        }.onFailure {
+            Log.d("Media3VideoPlayer", "当前 media3 不支持「跳过同一VSync渲染多帧」，该项设置不生效")
+        }
     }
 
     private fun reInitPlayer() {

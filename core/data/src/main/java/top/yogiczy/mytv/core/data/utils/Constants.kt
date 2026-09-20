@@ -12,7 +12,7 @@ object Constants {
     /**
      * 应用 标题
      */
-    const val APP_TITLE = "我的电视"
+    const val APP_TITLE = "MyTV"
 
     /**
      * 应用 代码仓库
@@ -20,13 +20,21 @@ object Constants {
     const val APP_REPO = "https://github.com/yaoxieyoulei/mytv-android"
 
     /**
+     * 频道台标来源
+     *
+     * 台标仓库按电视台规范名称提供 PNG 图片。若要换成自建仓库，
+     * 只需改这一处（界面上的备用地址见 ChannelItemLogo）。
+     */
+    const val CHANNEL_LOGO_SOURCE = "https://live.fanmingming.com/tv"
+
+    /**
      * IPTV直播源
      */
     val IPTV_SOURCE_LIST = IptvSourceList(
         listOf(
             IptvSource(
-                name = "无效占位订阅源",
-                url = "http://1.2.3.4/live.m3u",
+                name = "默认直播源",
+                url = "https://tvlive.nide.qzz.io",
             ),
         )
     )
@@ -41,9 +49,26 @@ object Constants {
      */
     val EPG_SOURCE_LIST = EpgSourceList(
         listOf(
+            /**
+             * 国内（四川电信）直连可达，作为默认节目单
+             */
             EpgSource(
                 name = "默认节目单 老张的EPG",
                 url = "http://epg.51zmt.top:8000/e.xml.gz",
+            ),
+            /**
+             * 备用节目单：频道更多，大陆网络下作为可切换的备选
+             */
+            EpgSource(
+                name = "备用节目单 112114",
+                url = "https://epg.112114.xyz/pp.xml",
+            ),
+            /**
+             * 备用节目单：海外站点，作为最后的备选
+             */
+            EpgSource(
+                name = "备用节目单 Fanmingming",
+                url = "https://live.fanmingming.com/e.xml",
             ),
         )
     )
