@@ -19,9 +19,13 @@
 
 - 默认直播源改为自用源
 - 节目单默认源改为国内可直连的源，并修复了频道名写法差异（如 `CCTV-1` 与 `CCTV1`）导致的节目单匹配失败
-- 修复台标不显示的问题：台标默认开启；按台标仓库的命名规范换算文件名（央视由 `CCTV-1` 换算为 `CCTV1`）；
-  并为主地址补充国内镜像与公共 CDN 两份备用地址，主地址不可达时自动回退
+- 修复台标不显示的问题，并做成多级自动回退：**内置 54 个常用频道台标**（离线可用、瞬时显示）
+  → **自建台标镜像仓库**（CDN 加速 + 直连）→ 上游原站 → 上游国内镜像；
+  同时按台标仓库的命名规范换算文件名（央视由 `CCTV-1` 换算为 `CCTV1`）
 - 新增 DLNA 投屏：播放界面快捷操作栏第一项「投屏」，可把当前频道推送到局域网内的电视、电视盒子播放
+
+台标镜像仓库：[nid12345/mytv-logos](https://github.com/nid12345/mytv-logos)，
+内容同步自 [fanmingming/live](https://github.com/fanmingming/live) 的 `tv/` 目录。
 
 **特别感谢原作者 [@yaoxieyoulei](https://github.com/yaoxieyoulei)**，以及
 [my-tv](https://github.com/lizongying/my-tv)、[live](https://github.com/fanmingming/live) 等开源项目，
@@ -136,10 +140,6 @@
 ## 技术交流
 
 Telegram: https://t.me/mytv_android
-
-## 赞赏
-
-<img src="./screenshots/mm_reward_qrcode.png" width="48%"/>
 
 ## 致谢
 
