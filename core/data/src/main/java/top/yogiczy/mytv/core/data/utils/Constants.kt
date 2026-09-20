@@ -22,10 +22,11 @@ object Constants {
     /**
      * 频道台标来源
      *
-     * 台标仓库按电视台规范名称提供 PNG 图片。若要换成自建仓库，
-     * 只需改这一处（界面上的备用地址见 ChannelItemLogo）。
+     * 指向自建的台标镜像仓库（内容取自 fanmingming/live 的 tv 目录），经公共 CDN 加速。
+     * 频道数据里的台标地址由这里生成，实际加载时的多级回退顺序见 ChannelItemLogo：
+     * 内置台标 → 本仓库 CDN → 本仓库直连 → 上游原站 → 上游国内镜像。
      */
-    const val CHANNEL_LOGO_SOURCE = "https://live.fanmingming.com/tv"
+    const val CHANNEL_LOGO_SOURCE = "https://gcore.jsdelivr.net/gh/nid12345/mytv-logos@main/tv"
 
     /**
      * IPTV直播源
