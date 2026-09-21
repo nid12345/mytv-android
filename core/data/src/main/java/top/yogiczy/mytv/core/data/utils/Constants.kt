@@ -37,6 +37,19 @@ object Constants {
      * 斗鱼/虎牙/YY 这类订阅每个频道只有一条线路、频道数却有上千个，
      * 测速既没有收益又会长时间占满带宽，因此固定不参与。
      */
+    /**
+     * 潮汕节目回放（自建订阅镜像）
+     *
+     * 内容是汕头台各栏目的点播回看（mp4 直链），不是直播频道。两种用法：
+     * ① 作为内置订阅源，在「换源」/「自定义直播源」里直接选用；
+     * ② 浏览「默认直播源」时以附加分组的形式挂在分组末尾
+     *   （由 Configs.iptvChaoshanSourceEnable 控制，默认关闭）。
+     */
+    val CHAOSHAN_REPLAY_SOURCE = IptvSource(
+        name = "潮汕节目回放",
+        url = "https://gitee.com/nid123/chaoshan-tv/raw/master/data/chaoshan.txt",
+    )
+
     val IPTV_SOURCE_LIST = IptvSourceList(
         listOf(
             IptvSource(
@@ -56,8 +69,13 @@ object Constants {
                 name = "YY轮播",
                 url = "https://sub.ottiptv.cc/yylunbo.m3u",
             ),
+            CHAOSHAN_REPLAY_SOURCE,
         )
     )
+
+    /** 该订阅源是否内置的「潮汕节目回放」（点播回看，不显示台标、不参与测速） */
+    fun isChaoshanReplaySource(source: IptvSource): Boolean =
+        normalizeIptvSource(source).url == CHAOSHAN_REPLAY_SOURCE.url
 
     /**
      * 把配置里存的直播源对齐到内置源

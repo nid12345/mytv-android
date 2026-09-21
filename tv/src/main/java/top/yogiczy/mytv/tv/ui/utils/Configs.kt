@@ -1,5 +1,6 @@
 package top.yogiczy.mytv.tv.ui.utils
 
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import top.yogiczy.mytv.core.data.entities.channel.Channel
@@ -18,6 +19,29 @@ import top.yogiczy.mytv.tv.ui.screens.videoplayer.VideoPlayerDisplayMode
  * 应用配置
  */
 object Configs {
+    /**
+     * 推送写入配置的版本号
+     *
+     * 手机扫码网页/HTTP 接口改配置时只会写进存储，内存里的界面状态不会跟着变，
+     * 表现就是「推送完必须重启应用才生效」。这里递增一个版本号，
+     * 运行中的界面收到变化后自己重新读一遍配置。
+     */
+    val configPushVersion = MutableStateFlow(0L)
+
+    /** 收到新订阅源（推送/添加）时 +1，界面据此立即切过去并重载频道列表 */
+    val iptvSourcePushVersion = MutableStateFlow(0L)
+
+    /** 普通配置推送：让界面重新读取配置 */
+    fun notifyConfigPushed() {
+        configPushVersion.value += 1
+    }
+
+    /** 订阅源推送：重新读取配置，并触发频道列表重载 */
+    fun notifyIptvSourcePushed() {
+        configPushVersion.value += 1
+        iptvSourcePushVersion.value += 1
+    }
+
     enum class KEY {
         /** ==================== 应用 ==================== */
         /** 开机自启 */
@@ -45,6 +69,9 @@ object Configs {
         /** ==================== 直播源 ==================== */
         /** 上一次频道序号 */
         IPTV_LAST_CHANNEL_IDX,
+
+        /** 启动时是否自动播放上次退出的频道 */
+        IPTV_LAST_CHANNEL_REMEMBER_ENABLE,
 
         /** 换台反转 */
         IPTV_CHANNEL_CHANGE_FLIP,
@@ -85,8 +112,17 @@ object Configs {
         /** 直播源频道收藏换台边界跳出 */
         IPTV_CHANNEL_FAVORITE_CHANGE_BOUNDARY_JUMP_OUT,
 
-        /** 直播源分组隐藏列表 */
+        /** 直播源分组隐藏列表（旧，全局一份） */
         IPTV_CHANNEL_GROUP_HIDDEN_LIST,
+
+        /** 直播源分组隐藏列表（新，按订阅源地址分别记忆） */
+        IPTV_SOURCE_GROUP_HIDDEN_MAP,
+
+        /** 各订阅源的分组名缓存（用于跨源分组统一管理） */
+        IPTV_SOURCE_GROUP_NAMES_MAP,
+
+        /** 是否显示内置的「潮汕节目回放」分组 */
+        IPTV_CHAOSHAN_SOURCE_ENABLE,
 
         /** 混合模式 */
         IPTV_HYBRID_MODE,
@@ -152,6 +188,9 @@ object Configs {
         /** 播放器 显示模式 */
         VIDEO_PLAYER_DISPLAY_MODE,
 
+        /** 按频道名记住的显示比例（频道名 → 模式值） */
+        VIDEO_PLAYER_DISPLAY_MODE_CHANNEL_MAP,
+
         /** 播放器 强制音频软解 */
         VIDEO_PLAYER_FORCE_AUDIO_SOFT_DECODE,
 
@@ -202,6 +241,11 @@ object Configs {
     var iptvLastChannelIdx: Int
         get() = SP.getInt(KEY.IPTV_LAST_CHANNEL_IDX.name, 0)
         set(value) = SP.putInt(KEY.IPTV_LAST_CHANNEL_IDX.name, value)
+
+    /** 启动时是否自动播放上次退出的频道（关闭则每次从第一个频道开始） */
+    var iptvLastChannelRememberEnable: Boolean
+        get() = SP.getBoolean(KEY.IPTV_LAST_CHANNEL_REMEMBER_ENABLE.name, true)
+        set(value) = SP.putBoolean(KEY.IPTV_LAST_CHANNEL_REMEMBER_ENABLE.name, value)
 
     /** 换台反转 */
     var iptvChannelChangeFlip: Boolean
@@ -339,10 +383,49 @@ object Configs {
         get() = SP.getBoolean(KEY.IPTV_CHANNEL_FAVORITE_CHANGE_BOUNDARY_JUMP_OUT.name, true)
         set(value) = SP.putBoolean(KEY.IPTV_CHANNEL_FAVORITE_CHANGE_BOUNDARY_JUMP_OUT.name, value)
 
-    /** 直播源分组隐藏列表 */
+    /**
+     * 各订阅源记住的分组隐藏列表（订阅源地址 → 隐藏的分组名）
+     *
+     * 按源分别记忆：切换订阅源、重启应用后，只要分组名没变就保持原设定。
+     */
+    var iptvSourceGroupHiddenMap: Map<String, List<String>>
+        get() = decodeStringListMap(
+            SP.getString(KEY.IPTV_SOURCE_GROUP_HIDDEN_MAP.name, "{}")
+        )
+        set(value) = SP.putString(
+            KEY.IPTV_SOURCE_GROUP_HIDDEN_MAP.name, Json.encodeToString(value)
+        )
+
+    /** 各订阅源出现过的分组名缓存（订阅源地址 → 分组名列表） */
+    var iptvSourceGroupNamesMap: Map<String, List<String>>
+        get() = decodeStringListMap(
+            SP.getString(KEY.IPTV_SOURCE_GROUP_NAMES_MAP.name, "{}")
+        )
+        set(value) = SP.putString(
+            KEY.IPTV_SOURCE_GROUP_NAMES_MAP.name, Json.encodeToString(value)
+        )
+
+    /**
+     * 直播源分组隐藏列表（当前订阅源视图）
+     *
+     * 读写都落在 [iptvSourceGroupHiddenMap] 里当前订阅源那一项上，
+     * 切换订阅源后自然切换到该源自己的记忆，不需要额外清理。
+     */
     var iptvChannelGroupHiddenList: Set<String>
-        get() = SP.getStringSet(KEY.IPTV_CHANNEL_GROUP_HIDDEN_LIST.name, emptySet())
-        set(value) = SP.putStringSet(KEY.IPTV_CHANNEL_GROUP_HIDDEN_LIST.name, value)
+        get() = iptvSourceGroupHiddenMap[currentNormalizedSourceUrl]?.toSet() ?: emptySet()
+        set(value) {
+            iptvSourceGroupHiddenMap =
+                iptvSourceGroupHiddenMap + (currentNormalizedSourceUrl to value.toList())
+        }
+
+    /** 是否显示内置的「潮汕节目回放」分组（默认关闭，需要时自己在设置里开） */
+    var iptvChaoshanSourceEnable: Boolean
+        get() = SP.getBoolean(KEY.IPTV_CHAOSHAN_SOURCE_ENABLE.name, false)
+        set(value) = SP.putBoolean(KEY.IPTV_CHAOSHAN_SOURCE_ENABLE.name, value)
+
+    /** 当前订阅源（按内置源对齐后）的地址，作为按源记忆的键 */
+    private val currentNormalizedSourceUrl: String
+        get() = Constants.normalizeIptvSource(iptvSourceCurrent).url
 
     /** 混合模式 */
     var iptvHybridMode: IptvHybridMode
@@ -478,6 +561,47 @@ object Configs {
         )
         set(value) = SP.putInt(KEY.VIDEO_PLAYER_DISPLAY_MODE.name, value.value)
 
+    /** 各频道单独记住的显示比例（频道名 → 模式值） */
+    var videoPlayerDisplayModeChannelMap: Map<String, Int>
+        get() = decodeIntMap(
+            SP.getString(KEY.VIDEO_PLAYER_DISPLAY_MODE_CHANNEL_MAP.name, "{}")
+        )
+        set(value) = SP.putString(
+            KEY.VIDEO_PLAYER_DISPLAY_MODE_CHANNEL_MAP.name, Json.encodeToString(value)
+        )
+
+    /**
+     * 当前频道实际生效的显示比例
+     *
+     * 全局默认（默认 16:9）铺底，只有被单独设过的频道才用自己记住的比例。
+     * 换台、重启、换订阅源都按这个规则解析。
+     */
+    fun resolveVideoPlayerDisplayMode(channel: Channel): VideoPlayerDisplayMode {
+        videoPlayerDisplayModeChannelMap[channel.name]?.let {
+            return VideoPlayerDisplayMode.fromValue(it)
+        }
+        return videoPlayerDisplayMode
+    }
+
+    /** 记住某个频道单独的显示比例（只影响这个频道） */
+    fun rememberVideoPlayerDisplayMode(mode: VideoPlayerDisplayMode, channel: Channel) {
+        videoPlayerDisplayModeChannelMap =
+            videoPlayerDisplayModeChannelMap + (channel.name to mode.value)
+    }
+
+    /** 忘掉某个频道的单独设置，回到全局默认比例 */
+    fun forgetVideoPlayerDisplayMode(channel: Channel) {
+        if (!videoPlayerDisplayModeChannelMap.containsKey(channel.name)) return
+        videoPlayerDisplayModeChannelMap = videoPlayerDisplayModeChannelMap - channel.name
+    }
+
+    private fun decodeIntMap(raw: String): Map<String, Int> =
+        runCatching { Json.decodeFromString<Map<String, Int>>(raw) }.getOrElse { emptyMap() }
+
+    private fun decodeStringListMap(raw: String): Map<String, List<String>> =
+        runCatching { Json.decodeFromString<Map<String, List<String>>>(raw) }
+            .getOrElse { emptyMap() }
+
     /** 播放器 强制音频软解 */
     var videoPlayerForceAudioSoftDecode: Boolean
         get() = SP.getBoolean(KEY.VIDEO_PLAYER_FORCE_AUDIO_SOFT_DECODE.name, false)
@@ -562,12 +686,36 @@ object Configs {
         val savedVersion = SP.getInt(KEY.APP_CONFIG_VERSION.name, 0)
         if (savedVersion >= CURRENT_CONFIG_VERSION) return
 
+        if (savedVersion < 2) {
+            // v2（1.4）：分组隐藏从「全局一份」改成「按订阅源记忆」。
+            // 老配置里的全局隐藏列表迁移到当时的订阅源名下，避免设定丢失。
+            val legacy = SP.getStringSet(KEY.IPTV_CHANNEL_GROUP_HIDDEN_LIST.name, emptySet())
+            if (legacy.isNotEmpty()) {
+                val sourceUrl = runCatching {
+                    Constants.normalizeIptvSource(
+                        Json.decodeFromString<IptvSource>(
+                            SP.getString(KEY.IPTV_SOURCE_CURRENT.name, "")
+                                .ifBlank { Json.encodeToString(Constants.IPTV_SOURCE_LIST.first()) }
+                        )
+                    ).url
+                }.getOrElse { Constants.IPTV_SOURCE_LIST.first().url }
+
+                iptvSourceGroupHiddenMap = iptvSourceGroupHiddenMap + (sourceUrl to legacy.toList())
+            }
+        }
+
         // v1（1.3）：三段式选台与 16:9 显示改为默认值（getter 默认值已更新，
         // 老配置里没有这两个键的用户自动跟随新默认，无需写库）
+
+        if (savedVersion < 3) {
+            // v3（1.5）：潮汕节目回放改为默认关闭；订阅地址已内置成一个可切换的订阅源，
+            // 需要时自己在设置里开（或直接在「换源」里切到该源）
+            iptvChaoshanSourceEnable = false
+        }
 
         SP.putInt(KEY.APP_CONFIG_VERSION.name, CURRENT_CONFIG_VERSION)
     }
 
     /** 当前配置版本，每次需要把新默认值刷到老配置上时 +1 */
-    private const val CURRENT_CONFIG_VERSION = 1
+    private const val CURRENT_CONFIG_VERSION = 3
 }

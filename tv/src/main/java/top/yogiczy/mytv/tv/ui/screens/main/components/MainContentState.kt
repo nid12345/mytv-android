@@ -115,7 +115,13 @@ class MainContentState(
     init {
         val channelGroupList = channelGroupListProvider()
 
-        changeCurrentChannel(channelGroupList.channelList.getOrElse(settingsViewModel.iptvLastChannelIdx) {
+        // 启动频道：默认接着上次退出时的频道；关掉「记住上次频道」则从第一个开始
+        val launchChannelIdx =
+            if (settingsViewModel.iptvLastChannelRememberEnable)
+                settingsViewModel.iptvLastChannelIdx
+            else 0
+
+        changeCurrentChannel(channelGroupList.channelList.getOrElse(launchChannelIdx) {
             channelGroupList.channelList.firstOrNull() ?: Channel()
         })
 

@@ -10,6 +10,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.debounce
 import top.yogiczy.mytv.core.data.utils.Constants
+import top.yogiczy.mytv.tv.ui.utils.Configs
 
 @Stable
 class ScreenAutoClose internal constructor(
@@ -32,7 +33,8 @@ class ScreenAutoClose internal constructor(
 
 @Composable
 fun rememberScreenAutoCloseState(
-    @IntRange(from = 0) timeout: Long = Constants.UI_SCREEN_AUTO_CLOSE_DELAY,
+    // 接通设置里的「自动关闭界面延时」：原实现写死 15 秒常量，设置项形同虚设
+    @IntRange(from = 0) timeout: Long = Configs.uiScreenAutoCloseDelay,
     onTimeout: () -> Unit = {},
 ) = remember { ScreenAutoClose(timeout = timeout, onTimeout = onTimeout) }.also {
     LaunchedEffect(it) { it.observe() }

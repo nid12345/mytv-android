@@ -123,7 +123,9 @@ fun ClassicChannelItemList(
     LazyColumn(
         modifier = modifier
             .fillMaxHeight()
-            .width(if (showChannelLogoProvider()) 280.dp else 220.dp)
+            // 不显示台标位时（如「潮汕节目回放」的点播列表），把台标占的 60dp
+            // 还给标题，否则标题被挤得只剩一点，长标题根本看不全
+            .width(if (showChannelLogoProvider()) 280.dp else 300.dp)
             .background(MaterialTheme.colorScheme.surface.copy(0.8f))
             .ifElse(
                 LocalSettings.current.uiFocusOptimize,

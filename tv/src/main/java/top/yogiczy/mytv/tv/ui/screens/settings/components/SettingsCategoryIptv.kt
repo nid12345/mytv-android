@@ -21,11 +21,13 @@ import kotlinx.coroutines.launch
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList
 import top.yogiczy.mytv.core.data.entities.iptvsource.IptvSourceList
 import top.yogiczy.mytv.core.data.repositories.iptv.IptvRepository
+import top.yogiczy.mytv.core.data.utils.Constants
 import top.yogiczy.mytv.core.util.utils.humanizeMs
 import top.yogiczy.mytv.tv.ui.material.LocalPopupManager
 import top.yogiczy.mytv.tv.ui.material.SimplePopup
 import top.yogiczy.mytv.tv.ui.material.Tag
 import top.yogiczy.mytv.tv.ui.screens.channelgroup.ChannelGroupManageScreen
+import top.yogiczy.mytv.tv.ui.screens.channelgroup.SourceGroupManageScreen
 import top.yogiczy.mytv.tv.ui.screens.components.SelectDialog
 import top.yogiczy.mytv.tv.ui.screens.iptvsource.IptvSourceScreen
 import top.yogiczy.mytv.tv.ui.screens.main.MainViewModel
@@ -75,6 +77,22 @@ fun SettingsCategoryIptv(
 
         item {
             SettingsListItem(
+                headlineContent = "记住上次频道",
+                supportingContent = if (settingsViewModel.iptvLastChannelRememberEnable)
+                    "打开应用时自动播放上次退出时的频道"
+                else "已关闭，打开应用时从第一个频道开始",
+                trailingContent = {
+                    Switch(settingsViewModel.iptvLastChannelRememberEnable, null)
+                },
+                onSelected = {
+                    settingsViewModel.iptvLastChannelRememberEnable =
+                        !settingsViewModel.iptvLastChannelRememberEnable
+                },
+            )
+        }
+
+        item {
+            SettingsListItem(
                 headlineContent = "线路测速排序",
                 supportingContent = if (settingsViewModel.iptvSourceLineSpeedSortEnable)
                     "后台给默认直播源的各条线路测速，把最流畅的排到第一位（不影响其它订阅源）"
@@ -85,6 +103,27 @@ fun SettingsCategoryIptv(
                 onSelected = {
                     settingsViewModel.iptvSourceLineSpeedSortEnable =
                         !settingsViewModel.iptvSourceLineSpeedSortEnable
+                },
+            )
+        }
+
+        item {
+            SettingsListItem(
+                headlineContent = "潮汕节目回放",
+                supportingContent = if (settingsViewModel.iptvChaoshanSourceEnable)
+                    "浏览默认直播源时，在分组末尾附加显示「潮汕节目回放」"
+                else "已关闭（订阅地址已内置为独立订阅源，可在「换源」里直接切过去）",
+                trailingContent = {
+                    Switch(settingsViewModel.iptvChaoshanSourceEnable, null)
+                },
+                onSelected = {
+                    settingsViewModel.iptvChaoshanSourceEnable =
+                        !settingsViewModel.iptvChaoshanSourceEnable
+                    // 当前正浏览默认源时立即重载频道列表；在其它源上则下次浏览默认源生效
+                    val isDefaultSource =
+                        Constants.normalizeIptvSource(settingsViewModel.iptvSourceCurrent).url ==
+                                Constants.IPTV_SOURCE_LIST.first().url
+                    if (isDefaultSource) mainViewModel.init()
                 },
             )
         }
@@ -185,11 +224,11 @@ fun SettingsCategoryIptv(
                         if (settingsViewModel.iptvSourceCurrent != it) {
                             settingsViewModel.iptvSourceCurrent = it
                             settingsViewModel.iptvLastChannelIdx = 0
-                            settingsViewModel.iptvChannelGroupHiddenList = emptySet()
+                            // 先清缓存再重载（分组显隐按订阅源分别记忆，切换源不需要清理）
                             coroutineScope.launch {
-                                IptvRepository(settingsViewModel.iptvSourceCurrent).clearCache()
+                                IptvRepository(it).clearCache()
+                                mainViewModel.init()
                             }
-                            mainViewModel.init()
                         }
                     },
                     onIptvSourceDeleted = {
@@ -202,11 +241,10 @@ fun SettingsCategoryIptv(
                             IptvSourceList(settingsViewModel.iptvSourceList + newSource)
                         settingsViewModel.iptvSourceCurrent = newSource
                         settingsViewModel.iptvLastChannelIdx = 0
-                        settingsViewModel.iptvChannelGroupHiddenList = emptySet()
                         coroutineScope.launch {
                             IptvRepository(newSource).clearCache()
+                            mainViewModel.init()
                         }
-                        mainViewModel.init()
                     },
                 )
             }
@@ -239,6 +277,41 @@ fun SettingsCategoryIptv(
                     channelGroupHiddenListProvider = { settingsViewModel.iptvChannelGroupHiddenList.toPersistentList() },
                     onChannelGroupHiddenListChange = {
                         settingsViewModel.iptvChannelGroupHiddenList = it.toSet()
+                    },
+                    onClose = { visible = false },
+                )
+            }
+        }
+
+        item {
+            val popupManager = LocalPopupManager.current
+            val focusRequester = remember { FocusRequester() }
+            var visible by remember { mutableStateOf(false) }
+
+            SettingsListItem(
+                modifier = Modifier.focusRequester(focusRequester),
+                headlineContent = "全部分组管理",
+                supportingContent = "统一管理所有订阅源的分组显示、隐藏（切换源、重启后保持）",
+                onSelected = {
+                    popupManager.push(focusRequester, true)
+                    visible = true
+                },
+                remoteConfig = true,
+            )
+
+            SimplePopup(
+                visibleProvider = { visible },
+                onDismissRequest = { visible = false },
+            ) {
+                SourceGroupManageScreen(
+                    sourcesProvider = {
+                        (Constants.IPTV_SOURCE_LIST + settingsViewModel.iptvSourceList)
+                            .distinctBy { it.url }
+                    },
+                    hiddenMapProvider = { settingsViewModel.iptvSourceGroupHiddenMap },
+                    groupNamesMapProvider = { Configs.iptvSourceGroupNamesMap },
+                    onToggleGroup = { sourceUrl, group ->
+                        settingsViewModel.toggleSourceGroupHidden(sourceUrl, group)
                     },
                     onClose = { visible = false },
                 )

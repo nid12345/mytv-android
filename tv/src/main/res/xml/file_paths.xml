@@ -3,4 +3,12 @@
     <cache-path
         name="cache"
         path="." />
+    <!-- 持久保存的推送安装包（filesDir/apk） -->
+    <files-path
+        name="files"
+        path="." />
+    <!-- Android 7 以下安装包中转目录 -->
+    <external-cache-path
+        name="external_cache"
+        path="." />
 </paths>

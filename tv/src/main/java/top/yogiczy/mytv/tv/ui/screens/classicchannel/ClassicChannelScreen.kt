@@ -31,6 +31,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -50,7 +51,11 @@ import top.yogiczy.mytv.core.data.entities.epg.EpgProgramme
 import top.yogiczy.mytv.core.data.entities.epg.EpgProgrammeReserveList
 import top.yogiczy.mytv.core.data.entities.iptvsource.IptvSource
 import top.yogiczy.mytv.core.data.entities.iptvsource.IptvSourceList
+import top.yogiczy.mytv.core.data.utils.Constants
 import top.yogiczy.mytv.tv.ui.material.Visible
+import top.yogiczy.mytv.tv.ui.screens.applauncher.AppLaunchItem
+import top.yogiczy.mytv.tv.ui.screens.applauncher.AppLauncherPanel
+import top.yogiczy.mytv.tv.ui.screens.applauncher.queryLaunchableApps
 import top.yogiczy.mytv.tv.ui.screens.channel.ChannelScreenTopRight
 import top.yogiczy.mytv.tv.ui.screens.channel.components.ChannelInfo
 import top.yogiczy.mytv.tv.ui.screens.classicchannel.components.ClassicChannelGroupItemList
@@ -93,11 +98,15 @@ fun ClassicChannelScreen(
     onIptvSourceSelected: (IptvSource) -> Unit = {},
     onIptvSourceDeleted: (IptvSource) -> Unit = {},
     onIptvSourceAdded: (IptvSource) -> Unit = {},
+    /** 在「系统应用」面板里选中某个应用并跳转 */
+    onSystemAppLaunch: (AppLaunchItem) -> Unit = {},
     onClose: () -> Unit = {},
 ) {
+    val context = LocalContext.current
     val screenAutoCloseState = rememberScreenAutoCloseState(onTimeout = onClose)
     val channelGroupList = channelGroupListProvider()
     val channelFavoriteListVisible = remember { channelFavoriteListVisibleProvider() }
+    val installedApps = remember { queryLaunchableApps(context) }
 
     var focusedChannelGroup by remember {
         mutableStateOf(
@@ -133,10 +142,12 @@ fun ClassicChannelScreen(
                         channelGroupList.toList()
 
                     // 「换源」固定排在最上面，方便随手切换订阅
-                    if (sourceSwitchEnabledProvider())
-                        ChannelGroupList(listOf(ClassicPanelScreenSwitchSourceGroup) + groupList)
-                    else
-                        ChannelGroupList(groupList)
+                    val withSwitchSource = if (sourceSwitchEnabledProvider())
+                        listOf(ClassicPanelScreenSwitchSourceGroup) + groupList
+                    else groupList
+
+                    // 「系统应用」固定排在最底下，作为打开其它 app 的入口
+                    ChannelGroupList(withSwitchSource + ClassicPanelScreenSystemAppsGroup)
                 },
                 initialChannelGroupProvider = {
                     if (channelFavoriteListVisible)
@@ -148,8 +159,10 @@ fun ClassicChannelScreen(
                 onChannelGroupFocused = {
                     focusedChannelGroup = it
                     onChannelFavoriteListVisibleChange(it == ClassicPanelScreenFavoriteChannelGroup)
-                    // 换源面板与节目单面板不同时出现
-                    if (it == ClassicPanelScreenSwitchSourceGroup) epgListVisible = false
+                    // 换源面板、系统应用面板与节目单面板不同时出现
+                    if (it == ClassicPanelScreenSwitchSourceGroup ||
+                        it == ClassicPanelScreenSystemAppsGroup
+                    ) epgListVisible = false
                 },
                 onUserAction = { screenAutoCloseState.active() },
             )
@@ -162,6 +175,13 @@ fun ClassicChannelScreen(
                     onIptvSourceSelected = onIptvSourceSelected,
                     onIptvSourceDeleted = onIptvSourceDeleted,
                     onIptvSourceAdded = onIptvSourceAdded,
+                    onUserAction = { screenAutoCloseState.active() },
+                )
+            } else if (focusedChannelGroup == ClassicPanelScreenSystemAppsGroup) {
+                AppLauncherPanel(
+                    modifier = Modifier.onSizeChanged { channelListWidth = it.width },
+                    appsProvider = { installedApps },
+                    onAppLaunch = onSystemAppLaunch,
                     onUserAction = { screenAutoCloseState.active() },
                 )
             } else {
@@ -196,7 +216,12 @@ fun ClassicChannelScreen(
                     showEpgProgrammeProgressProvider = showEpgProgrammeProgressProvider,
                     onUserAction = { screenAutoCloseState.active() },
                     inFavoriteModeProvider = { focusedChannelGroup == ClassicPanelScreenFavoriteChannelGroup },
-                    showChannelLogoProvider = showChannelLogoProvider,
+                    // 「潮汕节目回放」是节目回放列表，不是电视频道：不显示台标位，
+                    // 长标题聚焦时靠 basicMarquee 滚动显示完整标题
+                    showChannelLogoProvider = {
+                        showChannelLogoProvider() &&
+                                focusedChannelGroup.name != Constants.CHAOSHAN_REPLAY_SOURCE.name
+                    },
                 )
 
                 Visible({ epgListVisible }) {
@@ -315,6 +340,13 @@ val ClassicPanelScreenFavoriteChannelGroup = ChannelGroup(name = "我的收藏")
  * 它不是真的频道分组，只是分组栏里的一个入口；选中后右侧会换成订阅列表。
  */
 val ClassicPanelScreenSwitchSourceGroup = ChannelGroup(name = "换源")
+
+/**
+ * 「系统应用」伪分组
+ *
+ * 分组栏最底下的入口，选中后中栏换成已装应用列表，点击应用跳转出去。
+ */
+val ClassicPanelScreenSystemAppsGroup = ChannelGroup(name = "系统应用")
 
 @Preview(device = "id:Android TV (720p)")
 @Composable

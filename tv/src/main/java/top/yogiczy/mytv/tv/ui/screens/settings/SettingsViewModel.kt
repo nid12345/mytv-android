@@ -17,6 +17,7 @@ import top.yogiczy.mytv.core.data.entities.epgsource.EpgSource
 import top.yogiczy.mytv.core.data.entities.epgsource.EpgSourceList
 import top.yogiczy.mytv.core.data.entities.iptvsource.IptvSource
 import top.yogiczy.mytv.core.data.entities.iptvsource.IptvSourceList
+import top.yogiczy.mytv.core.data.utils.Constants
 import top.yogiczy.mytv.tv.ui.screens.videoplayer.VideoPlayerDisplayMode
 import top.yogiczy.mytv.tv.ui.utils.Configs
 
@@ -75,6 +76,14 @@ class SettingsViewModel : ViewModel() {
         set(value) {
             _iptvLastChannelIdx = value
             Configs.iptvLastChannelIdx = value
+        }
+
+    private var _iptvLastChannelRememberEnable by mutableStateOf(Configs.iptvLastChannelRememberEnable)
+    var iptvLastChannelRememberEnable: Boolean
+        get() = _iptvLastChannelRememberEnable
+        set(value) {
+            _iptvLastChannelRememberEnable = value
+            Configs.iptvLastChannelRememberEnable = value
         }
 
     private var _iptvChannelChangeFlip by mutableStateOf(Configs.iptvChannelChangeFlip)
@@ -157,6 +166,14 @@ class SettingsViewModel : ViewModel() {
             Configs.iptvSourceLineSpeedSortEnable = value
         }
 
+    private var _iptvChaoshanSourceEnable by mutableStateOf(Configs.iptvChaoshanSourceEnable)
+    var iptvChaoshanSourceEnable: Boolean
+        get() = _iptvChaoshanSourceEnable
+        set(value) {
+            _iptvChaoshanSourceEnable = value
+            Configs.iptvChaoshanSourceEnable = value
+        }
+
     private var _iptvChannelFavoriteItems by mutableStateOf(Configs.iptvChannelFavoriteItems)
     var iptvChannelFavoriteItems: FavoriteChannelList
         get() = _iptvChannelFavoriteItems
@@ -201,13 +218,33 @@ class SettingsViewModel : ViewModel() {
             Configs.iptvChannelFavoriteChangeBoundaryJumpOut = value
         }
 
-    private var _iptvChannelGroupHiddenList by mutableStateOf(Configs.iptvChannelGroupHiddenList)
-    var iptvChannelGroupHiddenList: Set<String>
-        get() = _iptvChannelGroupHiddenList
+    /** 各订阅源的分组隐藏记忆（订阅源地址 → 隐藏的分组名） */
+    private var _iptvSourceGroupHiddenMap by mutableStateOf(Configs.iptvSourceGroupHiddenMap)
+    var iptvSourceGroupHiddenMap: Map<String, List<String>>
+        get() = _iptvSourceGroupHiddenMap
         set(value) {
-            _iptvChannelGroupHiddenList = value
-            Configs.iptvChannelGroupHiddenList = value
+            _iptvSourceGroupHiddenMap = value
+            Configs.iptvSourceGroupHiddenMap = value
         }
+
+    /** 当前订阅源在配置里的键（内置源按定义对齐） */
+    private val currentSourceUrl: String
+        get() = Constants.normalizeIptvSource(_iptvSourceCurrent).url
+
+    /** 直播源分组隐藏列表（当前订阅源视图，落在按源记忆上） */
+    var iptvChannelGroupHiddenList: Set<String>
+        get() = _iptvSourceGroupHiddenMap[currentSourceUrl]?.toSet() ?: emptySet()
+        set(value) {
+            iptvSourceGroupHiddenMap = _iptvSourceGroupHiddenMap + (currentSourceUrl to value.toList())
+        }
+
+    /** 切换某个订阅源下某个分组的显示/隐藏（全部分组管理用） */
+    fun toggleSourceGroupHidden(sourceUrl: String, group: String) {
+        val hidden = _iptvSourceGroupHiddenMap[sourceUrl] ?: emptyList()
+        iptvSourceGroupHiddenMap = _iptvSourceGroupHiddenMap + (
+                sourceUrl to if (group in hidden) hidden - group else hidden + group
+                )
+    }
 
     private var _iptvHybridMode by mutableStateOf(Configs.iptvHybridMode)
     var iptvHybridMode: Configs.IptvHybridMode
@@ -369,6 +406,16 @@ class SettingsViewModel : ViewModel() {
             Configs.videoPlayerDisplayMode = value
         }
 
+    /** 记住某个频道单独设置的显示比例（只影响这个频道） */
+    fun rememberVideoPlayerDisplayMode(mode: VideoPlayerDisplayMode, channel: Channel) {
+        Configs.rememberVideoPlayerDisplayMode(mode, channel)
+    }
+
+    /** 忘掉某个频道的单独显示比例，回到全局默认 */
+    fun forgetVideoPlayerDisplayMode(channel: Channel) {
+        Configs.forgetVideoPlayerDisplayMode(channel)
+    }
+
     private var _videoPlayerForceAudioSoftDecode by mutableStateOf(false)
     var videoPlayerForceAudioSoftDecode: Boolean
         get() = _videoPlayerForceAudioSoftDecode
@@ -418,6 +465,7 @@ class SettingsViewModel : ViewModel() {
         _debugShowVideoPlayerMetadata = Configs.debugShowVideoPlayerMetadata
         _debugShowLayoutGrids = Configs.debugShowLayoutGrids
         _iptvLastChannelIdx = Configs.iptvLastChannelIdx
+        _iptvLastChannelRememberEnable = Configs.iptvLastChannelRememberEnable
         _iptvChannelChangeFlip = Configs.iptvChannelChangeFlip
         _iptvSourceCacheTime = Configs.iptvSourceCacheTime
         _iptvSourceCurrent = Configs.iptvSourceCurrent
@@ -428,9 +476,10 @@ class SettingsViewModel : ViewModel() {
         _iptvSourceQuickSwitchEnable = Configs.iptvSourceQuickSwitchEnable
         _iptvChannelFavoriteListVisible = Configs.iptvChannelFavoriteListVisible
         _iptvSourceLineSpeedSortEnable = Configs.iptvSourceLineSpeedSortEnable
+        _iptvChaoshanSourceEnable = Configs.iptvChaoshanSourceEnable
         _iptvChannelFavoriteItems = Configs.iptvChannelFavoriteItems
         _iptvChannelFavoriteChangeBoundaryJumpOut = Configs.iptvChannelFavoriteChangeBoundaryJumpOut
-        _iptvChannelGroupHiddenList = Configs.iptvChannelGroupHiddenList
+        _iptvSourceGroupHiddenMap = Configs.iptvSourceGroupHiddenMap
         _iptvHybridMode = Configs.iptvHybridMode
         _epgEnable = Configs.epgEnable
         _epgSourceCurrent = Configs.epgSourceCurrent

@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +18,8 @@ import kotlinx.coroutines.flow.retry
 import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import top.yogiczy.mytv.core.data.entities.channel.ChannelGroup
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelList
 import top.yogiczy.mytv.core.data.entities.channel.ChannelList
@@ -76,17 +80,23 @@ class MainViewModel : ViewModel() {
             val playingChannelUrlList = ready.channelGroupList.channelList
                 .getOrNull(Configs.iptvLastChannelIdx)?.urlList?.toSet() ?: emptySet()
 
-            val sorted = IptvRepository(source)
+            // 「潮汕节目回放」是点播回放地址（mp4），不参与线路测速
+            val baseGroups = ready.channelGroupList
+                .filter { it.name != Constants.CHAOSHAN_REPLAY_SOURCE.name }
+            val extraGroups = ready.channelGroupList
+                .filter { it.name == Constants.CHAOSHAN_REPLAY_SOURCE.name }
+
+            val sortedBase = IptvRepository(source)
                 .sortChannelLinesBySpeed(
-                    ready.channelGroupList,
+                    ChannelGroupList(baseGroups),
                     excludeUrls = playingChannelUrlList,
                 )
 
             val latest = _uiState.value as? MainUiState.Ready ?: return@runCatching
-            if (sorted.size != latest.channelGroupList.size) return@runCatching
-            if (sorted == latest.channelGroupList) return@runCatching
+            val merged = ChannelGroupList(sortedBase + extraGroups)
+            if (merged == latest.channelGroupList) return@runCatching
 
-            _uiState.value = latest.copy(channelGroupList = sorted)
+            _uiState.value = latest.copy(channelGroupList = merged)
         }.onFailure {
             // 测速失败不影响正常使用，保持源里原有顺序
         }
@@ -95,13 +105,27 @@ class MainViewModel : ViewModel() {
     companion object {
         /** 打开应用后等待多久再开始测速，先让首帧播起来 */
         private const val SPEED_SORT_START_DELAY = 15_000L
+
+        /** 潮汕节目回放加载超时，超时就算了，不拖累默认源显示 */
+        private const val CHAOSHAN_LOAD_TIMEOUT = 8_000L
     }
 
     private suspend fun refreshChannel() {
         flow {
-            emit(
-                IptvRepository(Configs.iptvSourceCurrent).getChannelGroupList(cacheTime = Configs.iptvSourceCacheTime)
-            )
+            coroutineScope {
+                // 内置「潮汕节目回放」与主源并行拉取（带超时），主源先到先显示
+                val chaoshanDeferred = if (shouldAppendChaoshan()) async { loadChaoshanGroup() }
+                else null
+
+                val base = IptvRepository(Configs.iptvSourceCurrent)
+                    .getChannelGroupList(cacheTime = Configs.iptvSourceCacheTime)
+                    .also { cacheSourceGroupNames(it) }
+
+                emit(base)
+
+                val chaoshan = chaoshanDeferred?.await() ?: return@coroutineScope
+                emit(ChannelGroupList(base + chaoshan))
+            }
         }
             .retryWhen { _, attempt ->
                 if (attempt >= Constants.HTTP_RETRY_COUNT) return@retryWhen false
@@ -120,6 +144,37 @@ class MainViewModel : ViewModel() {
                 it
             }
             .collect()
+    }
+
+    /** 潮汕节目回放只在浏览默认直播源时附加显示 */
+    private fun shouldAppendChaoshan(): Boolean {
+        if (!Configs.iptvChaoshanSourceEnable) return false
+        val current = Configs.iptvSourceCurrent
+        return Constants.normalizeIptvSource(current).url == Constants.IPTV_SOURCE_LIST.first().url
+    }
+
+    /**
+     * 拉取内置「潮汕节目回放」，把它的各栏目压平成一个分组
+     *
+     * 加载失败（断网、链接失效）返回 null，静默跳过，不影响默认源正常显示。
+     */
+    private suspend fun loadChaoshanGroup(): ChannelGroup? = runCatching {
+        withTimeout(CHAOSHAN_LOAD_TIMEOUT) {
+            IptvRepository(Constants.CHAOSHAN_REPLAY_SOURCE)
+                .getChannelGroupList(cacheTime = Configs.iptvSourceCacheTime)
+        }
+    }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { replay ->
+        ChannelGroup(
+            name = Constants.CHAOSHAN_REPLAY_SOURCE.name,
+            channelList = ChannelList(replay.flatMap { it.channelList }),
+        )
+    }
+
+    /** 缓存订阅源出现过的分组名，供「全部分组管理」跨源查看与显隐 */
+    private fun cacheSourceGroupNames(groupList: ChannelGroupList) {
+        val url = Constants.normalizeIptvSource(Configs.iptvSourceCurrent).url
+        Configs.iptvSourceGroupNamesMap =
+            Configs.iptvSourceGroupNamesMap + (url to groupList.map { it.name })
     }
 
     private suspend fun hybridChannel(channelGroupList: ChannelGroupList) =

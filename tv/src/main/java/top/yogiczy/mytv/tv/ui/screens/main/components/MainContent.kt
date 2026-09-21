@@ -3,11 +3,19 @@ package top.yogiczy.mytv.tv.ui.screens.main.components
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.launch
+import top.yogiczy.mytv.core.data.entities.channel.Channel
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelIdx
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelList
@@ -20,10 +28,12 @@ import top.yogiczy.mytv.core.data.entities.iptvsource.IptvSourceList
 import top.yogiczy.mytv.core.data.repositories.epg.EpgRepository
 import top.yogiczy.mytv.core.data.repositories.iptv.IptvRepository
 import top.yogiczy.mytv.core.data.utils.ChannelUtil
+import top.yogiczy.mytv.core.data.utils.Constants
 import top.yogiczy.mytv.tv.ui.material.PopupContent
 import top.yogiczy.mytv.tv.ui.material.Snackbar
 import top.yogiczy.mytv.tv.ui.material.Visible
 import top.yogiczy.mytv.tv.ui.material.popupable
+import top.yogiczy.mytv.tv.ui.screens.applauncher.launchApp
 import top.yogiczy.mytv.tv.ui.screens.channel.ChannelNumberSelectScreen
 import top.yogiczy.mytv.tv.ui.screens.channel.ChannelScreen
 import top.yogiczy.mytv.tv.ui.screens.channel.ChannelTempScreen
@@ -46,6 +56,7 @@ import top.yogiczy.mytv.tv.ui.screens.videoplayer.rememberVideoPlayerState
 import top.yogiczy.mytv.tv.ui.screens.videoplayercontroller.VideoPlayerControllerScreen
 import top.yogiczy.mytv.tv.ui.screens.videoplayerdiaplaymode.VideoPlayerDisplayModeScreen
 import top.yogiczy.mytv.tv.ui.screens.webview.WebViewScreen
+import top.yogiczy.mytv.tv.ui.utils.Configs
 import top.yogiczy.mytv.tv.ui.utils.captureBackKey
 import top.yogiczy.mytv.tv.ui.utils.handleDragGestures
 import top.yogiczy.mytv.tv.ui.utils.handleKeyEvents
@@ -61,13 +72,28 @@ fun MainContent(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val mainViewModel: MainViewModel = viewModel()
+    val context = LocalContext.current
+
+    // 当前订阅源是「潮汕节目回放」时不显示台标位（那是点播回看列表，没有台标），
+    // 空出来的横向空间留给较长的标题
+    val showChannelLogoProvider = {
+        settingsViewModel.uiShowChannelLogo &&
+                !Constants.isChaoshanReplaySource(settingsViewModel.iptvSourceCurrent)
+    }
+
+    // 显示模式按「订阅源/频道」记忆：播放器 ready 时按当前频道解析实际生效的比例。
+    // provider 在状态创建前就要传入，这里用 holder 在组合后回填当前频道。
+    val currentChannelHolder = remember { mutableStateOf<() -> Channel>({ Channel() }) }
 
     val videoPlayerState =
-        rememberVideoPlayerState(defaultDisplayModeProvider = { settingsViewModel.videoPlayerDisplayMode })
+        rememberVideoPlayerState(defaultDisplayModeProvider = {
+            Configs.resolveVideoPlayerDisplayMode(currentChannelHolder.value.invoke())
+        })
     val mainContentState = rememberMainContentState(
         videoPlayerState = videoPlayerState,
         channelGroupListProvider = filteredChannelGroupListProvider,
     )
+    SideEffect { currentChannelHolder.value = { mainContentState.currentChannel } }
     val channelNumberSelectState = rememberChannelNumberSelectState {
         val idx = it.toInt() - 1
         filteredChannelGroupListProvider().channelList.getOrNull(idx)?.let { channel ->
@@ -203,7 +229,7 @@ fun MainContent(
             channelProvider = { mainContentState.currentChannel },
             channelUrlIdxProvider = { mainContentState.currentChannelUrlIdx },
             channelNumberProvider = { filteredChannelGroupListProvider().channelIdx(mainContentState.currentChannel) + 1 },
-            showChannelLogoProvider = { settingsViewModel.uiShowChannelLogo },
+            showChannelLogoProvider = showChannelLogoProvider,
             recentEpgProgrammeProvider = {
                 epgListProvider().recentProgramme(mainContentState.currentChannel)
             },
@@ -306,11 +332,20 @@ fun MainContent(
     ) {
         VideoPlayerDisplayModeScreen(
             currentDisplayModeProvider = { videoPlayerState.displayMode },
-            onDisplayModeChanged = { videoPlayerState.displayMode = it },
+            onDisplayModeChanged = {
+                videoPlayerState.displayMode = it
+                // 只记住这个频道：下次再打开它时优先用这里设的比例，
+                // 其它频道仍用全局默认（默认 16:9）
+                settingsViewModel.rememberVideoPlayerDisplayMode(
+                    it, mainContentState.currentChannel
+                )
+            },
             onApplyToGlobal = {
                 mainContentState.isVideoPlayerDisplayModeScreenVisible = false
                 settingsViewModel.videoPlayerDisplayMode = videoPlayerState.displayMode
-                Snackbar.show("已应用到全局")
+                // 设为全局默认后，本频道的单独设置作废（否则它会一直盖住全局值）
+                settingsViewModel.forgetVideoPlayerDisplayMode(mainContentState.currentChannel)
+                Snackbar.show("已设为全局默认（本频道不再单独记忆）")
             },
             onClose = { mainContentState.isVideoPlayerDisplayModeScreenVisible = false },
         )
@@ -326,7 +361,7 @@ fun MainContent(
             currentChannelNumberProvider = {
                 (filteredChannelGroupListProvider().channelList.indexOf(mainContentState.currentChannel) + 1).toString()
             },
-            showChannelLogoProvider = { settingsViewModel.uiShowChannelLogo },
+            showChannelLogoProvider = showChannelLogoProvider,
             epgListProvider = epgListProvider,
             currentPlaybackEpgProgrammeProvider = { mainContentState.currentPlaybackEpgProgramme },
             videoPlayerMetadataProvider = { videoPlayerState.metadata },
@@ -385,7 +420,7 @@ fun MainContent(
             channelGroupListProvider = filteredChannelGroupListProvider,
             currentChannelProvider = { mainContentState.currentChannel },
             currentChannelUrlIdxProvider = { mainContentState.currentChannelUrlIdx },
-            showChannelLogoProvider = { settingsViewModel.uiShowChannelLogo },
+            showChannelLogoProvider = showChannelLogoProvider,
             onChannelSelected = {
                 mainContentState.isChannelScreenVisible = false
                 mainContentState.changeCurrentChannel(it)
@@ -414,7 +449,7 @@ fun MainContent(
             currentChannelProvider = { mainContentState.currentChannel },
             currentChannelUrlIdxProvider = { mainContentState.currentChannelUrlIdx },
             favoriteChannelListProvider = { mainContentState.favoriteChannelList() },
-            showChannelLogoProvider = { settingsViewModel.uiShowChannelLogo },
+            showChannelLogoProvider = showChannelLogoProvider,
             onChannelSelected = {
                 mainContentState.isChannelScreenVisible = false
                 mainContentState.changeCurrentChannel(it)
@@ -447,13 +482,13 @@ fun MainContent(
                 if (settingsViewModel.iptvSourceCurrent != iptvSource) {
                     settingsViewModel.iptvSourceCurrent = iptvSource
                     settingsViewModel.iptvLastChannelIdx = 0
-                    settingsViewModel.iptvChannelGroupHiddenList = emptySet()
-                    coroutineScope.launch {
-                        IptvRepository(settingsViewModel.iptvSourceCurrent).clearCache()
-                    }
                     mainContentState.isChannelScreenVisible = false
                     Snackbar.show("已切换直播源：${iptvSource.name}")
-                    mainViewModel.init()
+                    // 先清缓存再重载，否则可能把上一个订阅源的缓存内容当成新源的加载出来
+                    coroutineScope.launch {
+                        IptvRepository(iptvSource).clearCache()
+                        mainViewModel.init()
+                    }
                 }
             },
             onIptvSourceDeleted = { iptvSource ->
@@ -466,11 +501,17 @@ fun MainContent(
                     IptvSourceList(settingsViewModel.iptvSourceList + iptvSource)
                 settingsViewModel.iptvSourceCurrent = iptvSource
                 settingsViewModel.iptvLastChannelIdx = 0
-                settingsViewModel.iptvChannelGroupHiddenList = emptySet()
-                coroutineScope.launch { IptvRepository(iptvSource).clearCache() }
                 mainContentState.isChannelScreenVisible = false
                 Snackbar.show("已添加并切换直播源：${iptvSource.name}")
-                mainViewModel.init()
+                coroutineScope.launch {
+                    IptvRepository(iptvSource).clearCache()
+                    mainViewModel.init()
+                }
+            },
+            onSystemAppLaunch = { app ->
+                // 跳去其它 app 前先把正在播的直播暂停
+                videoPlayerState.pause()
+                launchApp(context, app.packageName)
             },
             onClose = { mainContentState.isChannelScreenVisible = false },
         )

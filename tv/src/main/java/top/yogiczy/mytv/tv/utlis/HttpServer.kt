@@ -23,6 +23,7 @@ import top.yogiczy.mytv.core.data.utils.Globals
 import top.yogiczy.mytv.core.data.utils.Loggable
 import top.yogiczy.mytv.core.data.utils.Logger
 import top.yogiczy.mytv.core.util.utils.ApkInstaller
+import top.yogiczy.mytv.core.util.utils.humanizeBytes
 import top.yogiczy.mytv.tv.ui.material.Snackbar
 import top.yogiczy.mytv.tv.ui.material.SnackbarType
 import top.yogiczy.mytv.tv.ui.screens.videoplayer.VideoPlayerDisplayMode
@@ -161,6 +162,8 @@ object HttpServer : Loggable() {
             Configs.iptvSourceList =
                 IptvSourceList(Configs.iptvSourceList + Constants.normalizeIptvSource(it))
             Configs.iptvSourceCurrent = Constants.normalizeIptvSource(it)
+            // 通知正在运行的界面：立即切到这个源并重载频道列表，不用重启应用
+            Configs.notifyIptvSourcePushed()
         }
 
         wrapResponse(response).send("success")
@@ -177,6 +180,7 @@ object HttpServer : Loggable() {
         EpgSource(name, url).let {
             Configs.epgSourceList = EpgSourceList(Configs.epgSourceList + it)
             Configs.epgSourceCurrent = it
+            Configs.notifyConfigPushed()
         }
 
         wrapResponse(response).send("success")
@@ -190,6 +194,7 @@ object HttpServer : Loggable() {
         val ua = body.get("ua").toString()
 
         Configs.videoPlayerUserAgent = ua
+        Configs.notifyConfigPushed()
 
         wrapResponse(response).send("success")
     }
@@ -292,6 +297,8 @@ object HttpServer : Loggable() {
         Configs.videoPlayerLoadTimeout = configs.videoPlayerLoadTimeout
         Configs.videoPlayerDisplayMode = configs.videoPlayerDisplayMode
 
+        Configs.notifyConfigPushed()
+
         wrapResponse(response).send("success")
     }
 
@@ -322,11 +329,29 @@ object HttpServer : Loggable() {
         }
 
         body.setEndCallback {
-            Snackbar.show("文件接收完成")
             body.dataEmitter.close()
-            os.flush()
-            os.close()
-            ApkInstaller.installApk(context, uploadedApkFile.path)
+
+            runCatching {
+                os.flush()
+                os.close()
+
+                // 持久保存安装包，并立即调起系统安装界面（用持久副本，避免缓存被清理后装不上）
+                val item = ApkPackageManager.saveUploadedApk(
+                    context, uploadedApkFile, "推送安装包.apk"
+                )
+                Snackbar.show("安装包已保存：${item.name}（${item.size.humanizeBytes()}）")
+
+                val installError = ApkInstaller.installApk(context, item.path)
+                if (installError != null) {
+                    Snackbar.show(
+                        "未能调起安装界面：$installError。可在「推送 → 安装包管理」里重试",
+                        type = SnackbarType.ERROR,
+                    )
+                }
+            }.onFailure {
+                log.e("安装包处理失败", it)
+                Snackbar.show("安装包处理失败：${it.message}", type = SnackbarType.ERROR)
+            }
         }
 
         wrapResponse(response).send("success")

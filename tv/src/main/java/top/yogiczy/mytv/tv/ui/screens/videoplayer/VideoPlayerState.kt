@@ -179,7 +179,10 @@ enum class VideoPlayerDisplayMode(
     SIXTEEN_NINE("16:9", 4),
 
     /** 2.35:1 */
-    WIDE("2.35:1", 5);
+    WIDE("2.35:1", 5),
+
+    /** 3:4（竖屏素材） */
+    THREE_FOUR("3:4", 6);
 
     companion object {
         fun fromValue(value: Int): VideoPlayerDisplayMode {

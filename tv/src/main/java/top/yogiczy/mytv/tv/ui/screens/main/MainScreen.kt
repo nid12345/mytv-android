@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,7 +29,9 @@ import androidx.tv.material3.LocalTextStyle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList
+import top.yogiczy.mytv.core.data.repositories.iptv.IptvRepository
 import top.yogiczy.mytv.tv.ui.material.CircularProgressIndicator
+import top.yogiczy.mytv.tv.ui.material.Snackbar
 import top.yogiczy.mytv.tv.ui.material.Visible
 import top.yogiczy.mytv.tv.ui.rememberChildPadding
 import top.yogiczy.mytv.tv.ui.screens.main.components.MainContent
@@ -36,6 +39,7 @@ import top.yogiczy.mytv.tv.ui.screens.settings.SettingsScreen
 import top.yogiczy.mytv.tv.ui.screens.settings.SettingsViewModel
 import top.yogiczy.mytv.tv.ui.theme.MyTVTheme
 import top.yogiczy.mytv.tv.ui.tooling.PreviewWithLayoutGrids
+import top.yogiczy.mytv.tv.ui.utils.Configs
 import top.yogiczy.mytv.tv.ui.utils.captureBackKey
 import top.yogiczy.mytv.tv.ui.utils.focusOnLaunched
 import top.yogiczy.mytv.tv.ui.utils.handleKeyEvents
@@ -48,6 +52,25 @@ fun MainScreen(
     settingsViewModel: SettingsViewModel = viewModel(),
 ) {
     val uiState by mainViewModel.uiState.collectAsState()
+
+    // 手机扫码页面/HTTP 接口推送配置时只会写存储，这里负责把改动立刻反映到界面上，
+    // 不用退出重启应用
+    val configPushVersion by Configs.configPushVersion.collectAsState()
+    val iptvSourcePushVersion by Configs.iptvSourcePushVersion.collectAsState()
+
+    LaunchedEffect(configPushVersion) {
+        if (configPushVersion <= 0L) return@LaunchedEffect
+        settingsViewModel.refresh()
+    }
+
+    LaunchedEffect(iptvSourcePushVersion) {
+        if (iptvSourcePushVersion <= 0L) return@LaunchedEffect
+        settingsViewModel.refresh()
+        val pushedSource = settingsViewModel.iptvSourceCurrent
+        IptvRepository(pushedSource).clearCache()
+        Snackbar.show("已接收推送的订阅源：${pushedSource.name}，正在加载…")
+        mainViewModel.init()
+    }
 
     when (val s = uiState) {
         is MainUiState.Ready -> MainContent(

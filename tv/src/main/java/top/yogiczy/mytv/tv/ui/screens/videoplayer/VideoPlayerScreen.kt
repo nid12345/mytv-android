@@ -49,6 +49,7 @@ fun VideoPlayerScreen(
             VideoPlayerDisplayMode.FOUR_THREE -> Modifier.aspectRatio(4f / 3)
             VideoPlayerDisplayMode.SIXTEEN_NINE -> Modifier.aspectRatio(16f / 9)
             VideoPlayerDisplayMode.WIDE -> Modifier.aspectRatio(2.35f / 1)
+            VideoPlayerDisplayMode.THREE_FOUR -> Modifier.aspectRatio(3f / 4)
         }
 
         when (settingsViewModel.videoPlayerRenderMode) {
