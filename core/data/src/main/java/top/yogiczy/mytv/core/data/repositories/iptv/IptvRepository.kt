@@ -93,10 +93,13 @@ class IptvRepository(
     ): ChannelGroupList {
         if (!source.lineSpeedSort) return channelGroupList
 
-        val urls = channelGroupList
-            .flatMap { group -> group.channelList.flatMap { channel -> channel.urlList } }
+        // 按频道分组传进去：测速会挑「每个频道响应最快的前几条」再实测一次真实下行速率，
+        // 免得只比响应头就把「答得快但拉不动」的线路排到第一位
+        val channelUrlGroups = channelGroupList.flatMap { group ->
+            group.channelList.map { channel -> channel.urlList }
+        }
 
-        val table = lineSpeedRepository.refresh(urls, excludeUrls = excludeUrls)
+        val table = lineSpeedRepository.refresh(channelUrlGroups, excludeUrls = excludeUrls)
 
         return lineSpeedRepository.sortByCache(channelGroupList, table)
     }
