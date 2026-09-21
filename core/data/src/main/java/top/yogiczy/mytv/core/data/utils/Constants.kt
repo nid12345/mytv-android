@@ -30,15 +30,43 @@ object Constants {
 
     /**
      * IPTV直播源
+     *
+     * 这里都是内置源，用户自己添加的订阅另存在配置里，界面上会把两者合并展示。
+     *
+     * 只有「默认直播源」参与线路测速排序（每个频道十几条线路，值得测）；
+     * 斗鱼/虎牙/YY 这类订阅每个频道只有一条线路、频道数却有上千个，
+     * 测速既没有收益又会长时间占满带宽，因此固定不参与。
      */
     val IPTV_SOURCE_LIST = IptvSourceList(
         listOf(
             IptvSource(
                 name = "默认直播源",
                 url = "https://tvlive.nide.qzz.io",
+                lineSpeedSort = true,
+            ),
+            IptvSource(
+                name = "斗鱼直播",
+                url = "https://sub.ottiptv.cc/douyuyqk.m3u",
+            ),
+            IptvSource(
+                name = "虎牙直播",
+                url = "https://sub.ottiptv.cc/huyayqk.m3u",
+            ),
+            IptvSource(
+                name = "YY轮播",
+                url = "https://sub.ottiptv.cc/yylunbo.m3u",
             ),
         )
     )
+
+    /**
+     * 把配置里存的直播源对齐到内置源
+     *
+     * 内置源的属性（比如是否参与测速）会随着版本调整，老配置里存的还是旧值，
+     * 按链接匹配到内置源就以内置的为准，匹配不到（用户自己的订阅）则原样保留。
+     */
+    fun normalizeIptvSource(source: IptvSource): IptvSource =
+        IPTV_SOURCE_LIST.firstOrNull { it.url == source.url } ?: source
 
     /**
      * IPTV源缓存时间（毫秒）

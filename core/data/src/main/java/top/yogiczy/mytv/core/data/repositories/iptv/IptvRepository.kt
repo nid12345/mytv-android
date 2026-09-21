@@ -68,7 +68,9 @@ class IptvRepository(
                 ).joinToString()
             )
 
-            return lineSpeedRepository.sortByCache(groupList, lineSpeedRepository.load())
+            return if (source.lineSpeedSort)
+                lineSpeedRepository.sortByCache(groupList, lineSpeedRepository.load())
+            else groupList
         } catch (ex: Exception) {
             log.e("获取直播源失败", ex)
             throw Exception(ex)
@@ -79,12 +81,22 @@ class IptvRepository(
      * 给所有线路测速，并按播放效果重排每个频道的线路
      *
      * 测速比较耗时，调用方应在后台执行，不要阻塞界面。
+     *
+     * 只有 [IptvSource.lineSpeedSort] 为 true 的源（内置默认源）才测速；
+     * 斗鱼/虎牙/YY 这类每个频道只有一条线路的订阅直接原样返回。
+     *
+     * @param excludeUrls 不参与探测的线路（一般传当前正在播放的频道）
      */
-    suspend fun sortChannelLinesBySpeed(channelGroupList: ChannelGroupList): ChannelGroupList {
+    suspend fun sortChannelLinesBySpeed(
+        channelGroupList: ChannelGroupList,
+        excludeUrls: Set<String> = emptySet(),
+    ): ChannelGroupList {
+        if (!source.lineSpeedSort) return channelGroupList
+
         val urls = channelGroupList
             .flatMap { group -> group.channelList.flatMap { channel -> channel.urlList } }
 
-        val table = lineSpeedRepository.refresh(urls)
+        val table = lineSpeedRepository.refresh(urls, excludeUrls = excludeUrls)
 
         return lineSpeedRepository.sortByCache(channelGroupList, table)
     }

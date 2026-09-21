@@ -5,6 +5,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.Switch
+import top.yogiczy.mytv.core.data.entities.channel.FavoriteChannelList
 import top.yogiczy.mytv.tv.ui.screens.settings.SettingsViewModel
 
 @Composable
@@ -33,8 +34,8 @@ fun SettingsCategoryFavorite(
         item {
             SettingsListItem(
                 headlineContent = "当前已收藏",
-                supportingContent = "包括不存在直播源中的频道",
-                trailingContent = "${settingsViewModel.iptvChannelFavoriteList.size}个频道",
+                supportingContent = "跨订阅源保留，切换直播源后依然可以查看与播放",
+                trailingContent = "${settingsViewModel.iptvChannelFavoriteItems.size}个频道",
             )
         }
 
@@ -43,7 +44,8 @@ fun SettingsCategoryFavorite(
                 headlineContent = "清空全部收藏",
                 supportingContent = "短按立即清空全部收藏",
                 onSelected = {
-                    settingsViewModel.iptvChannelFavoriteList = emptySet()
+                    settingsViewModel.iptvChannelFavoriteItems =
+                        FavoriteChannelList(emptyList())
                     settingsViewModel.iptvChannelFavoriteListVisible = false
                 }
             )

@@ -34,7 +34,7 @@ import top.yogiczy.mytv.core.data.entities.iptvsource.IptvSourceList
 import top.yogiczy.mytv.core.data.utils.Constants
 import top.yogiczy.mytv.tv.ui.material.LocalPopupManager
 import top.yogiczy.mytv.tv.ui.material.SimplePopup
-import top.yogiczy.mytv.tv.ui.screens.settings.components.SettingsCategoryPush
+import top.yogiczy.mytv.tv.ui.screens.iptvsource.components.AddIptvSourceDialog
 import top.yogiczy.mytv.tv.ui.theme.MyTVTheme
 import top.yogiczy.mytv.tv.ui.utils.handleKeyEvents
 import top.yogiczy.mytv.tv.ui.utils.ifElse
@@ -53,6 +53,7 @@ fun ClassicSourcePanel(
     currentIptvSourceProvider: () -> IptvSource = { IptvSource() },
     onIptvSourceSelected: (IptvSource) -> Unit = {},
     onIptvSourceDeleted: (IptvSource) -> Unit = {},
+    onIptvSourceAdded: (IptvSource) -> Unit = {},
     onUserAction: () -> Unit = {},
 ) {
     // 内置直播源排在前面，用户自定义的排在后面，与设置里的「自定义直播源」保持一致
@@ -96,7 +97,7 @@ fun ClassicSourcePanel(
             val popupManager = LocalPopupManager.current
             val focusRequester = remember { FocusRequester() }
             var isFocused by remember { mutableStateOf(false) }
-            var showPush by remember { mutableStateOf(false) }
+            var showAdd by remember { mutableStateOf(false) }
 
             DenseListItem(
                 modifier = Modifier
@@ -110,7 +111,7 @@ fun ClassicSourcePanel(
                         focusRequester = focusRequester,
                         onSelect = {
                             popupManager.push(focusRequester, true)
-                            showPush = true
+                            showAdd = true
                         },
                     ),
                 selected = false,
@@ -125,10 +126,15 @@ fun ClassicSourcePanel(
             )
 
             SimplePopup(
-                visibleProvider = { showPush },
-                onDismissRequest = { showPush = false },
+                visibleProvider = { showAdd },
+                onDismissRequest = { showAdd = false },
             ) {
-                SettingsCategoryPush()
+                AddIptvSourceDialog(
+                    onConfirm = { name, url ->
+                        showAdd = false
+                        onIptvSourceAdded(IptvSource(name = name, url = url))
+                    },
+                )
             }
         }
     }

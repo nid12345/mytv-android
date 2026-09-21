@@ -11,7 +11,6 @@ import kotlinx.coroutines.launch
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelIdx
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelList
-import top.yogiczy.mytv.core.data.entities.channel.ChannelList
 import top.yogiczy.mytv.core.data.entities.epg.Epg
 import top.yogiczy.mytv.core.data.entities.epg.EpgList
 import top.yogiczy.mytv.core.data.entities.epg.EpgList.Companion.match
@@ -80,6 +79,8 @@ fun MainContent(
     val currentChannelGroupList = filteredChannelGroupListProvider()
     LaunchedEffect(currentChannelGroupList) {
         mainContentState.onChannelGroupListChanged()
+        // 收藏是跨订阅源的：当前源里出现收藏过的频道时，把快照里的线路地址刷新成最新的
+        settingsViewModel.syncFavoriteChannels(currentChannelGroupList.channelList)
     }
 
     Box(
@@ -412,11 +413,7 @@ fun MainContent(
             channelGroupListProvider = filteredChannelGroupListProvider,
             currentChannelProvider = { mainContentState.currentChannel },
             currentChannelUrlIdxProvider = { mainContentState.currentChannelUrlIdx },
-            favoriteChannelListProvider = {
-                val favoriteChannelNameList = settingsViewModel.iptvChannelFavoriteList
-                ChannelList(filteredChannelGroupListProvider().channelList
-                    .filter { favoriteChannelNameList.contains(it.name) })
-            },
+            favoriteChannelListProvider = { mainContentState.favoriteChannelList() },
             showChannelLogoProvider = { settingsViewModel.uiShowChannelLogo },
             onChannelSelected = {
                 mainContentState.isChannelScreenVisible = false
@@ -462,6 +459,18 @@ fun MainContent(
             onIptvSourceDeleted = { iptvSource ->
                 settingsViewModel.iptvSourceList =
                     IptvSourceList(settingsViewModel.iptvSourceList - iptvSource)
+            },
+            onIptvSourceAdded = { iptvSource ->
+                // 手动填写的订阅：存下来并直接切过去用
+                settingsViewModel.iptvSourceList =
+                    IptvSourceList(settingsViewModel.iptvSourceList + iptvSource)
+                settingsViewModel.iptvSourceCurrent = iptvSource
+                settingsViewModel.iptvLastChannelIdx = 0
+                settingsViewModel.iptvChannelGroupHiddenList = emptySet()
+                coroutineScope.launch { IptvRepository(iptvSource).clearCache() }
+                mainContentState.isChannelScreenVisible = false
+                Snackbar.show("已添加并切换直播源：${iptvSource.name}")
+                mainViewModel.init()
             },
             onClose = { mainContentState.isChannelScreenVisible = false },
         )

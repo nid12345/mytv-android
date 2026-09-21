@@ -75,6 +75,22 @@ fun SettingsCategoryIptv(
 
         item {
             SettingsListItem(
+                headlineContent = "线路测速排序",
+                supportingContent = if (settingsViewModel.iptvSourceLineSpeedSortEnable)
+                    "后台给默认直播源的各条线路测速，把最流畅的排到第一位（不影响其它订阅源）"
+                else "已关闭，线路顺序保持直播源里的原始顺序",
+                trailingContent = {
+                    Switch(settingsViewModel.iptvSourceLineSpeedSortEnable, null)
+                },
+                onSelected = {
+                    settingsViewModel.iptvSourceLineSpeedSortEnable =
+                        !settingsViewModel.iptvSourceLineSpeedSortEnable
+                },
+            )
+        }
+
+        item {
+            SettingsListItem(
                 headlineContent = "换台反转",
                 supportingContent = if (settingsViewModel.iptvChannelChangeFlip) "方向键上：下一个频道；方向键下：上一个频道"
                 else "方向键上：上一个频道；方向键下：下一个频道",
@@ -179,6 +195,18 @@ fun SettingsCategoryIptv(
                     onIptvSourceDeleted = {
                         settingsViewModel.iptvSourceList =
                             IptvSourceList(settingsViewModel.iptvSourceList - it)
+                    },
+                    onIptvSourceAdded = { newSource ->
+                        isIptvSourceScreenVisible = false
+                        settingsViewModel.iptvSourceList =
+                            IptvSourceList(settingsViewModel.iptvSourceList + newSource)
+                        settingsViewModel.iptvSourceCurrent = newSource
+                        settingsViewModel.iptvLastChannelIdx = 0
+                        settingsViewModel.iptvChannelGroupHiddenList = emptySet()
+                        coroutineScope.launch {
+                            IptvRepository(newSource).clearCache()
+                        }
+                        mainViewModel.init()
                     },
                 )
             }

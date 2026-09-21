@@ -55,13 +55,32 @@ class MainViewModel : ViewModel() {
      *
      * 先用源里的原始顺序把频道显示出来，测速完成后再替换成重排结果；
      * 当前正在播放的线路不受影响（重排后会按地址重新定位线路下标）。
+     *
+     * 这里刻意先等一会儿再开始：刚打开应用时首帧还在加载，
+     * 这时要是同时发起一堆探测请求，正在缓冲的画面容易被挤到超时，
+     * 表现出来就是「打开后反而播放不了」。等播放稳定下来再慢慢测。
      */
     private suspend fun sortChannelLinesBySpeed() {
+        if (!Configs.iptvSourceLineSpeedSortEnable) return
+
         val ready = _uiState.value as? MainUiState.Ready ?: return
+        val source = Configs.iptvSourceCurrent
+        // 只有内置默认源参与测速；斗鱼/虎牙/YY 这类每频道单线路的订阅直接跳过
+        if (!source.lineSpeedSort) return
+
+        // 让首帧先播起来，也不打扰用户刚打开应用时的操作
+        delay(SPEED_SORT_START_DELAY)
 
         runCatching {
-            val sorted = IptvRepository(Configs.iptvSourceCurrent)
-                .sortChannelLinesBySpeed(ready.channelGroupList)
+            // 正在播的那个频道的线路显然可用，不必再测（用上次记住的频道序号定位）
+            val playingChannelUrlList = ready.channelGroupList.channelList
+                .getOrNull(Configs.iptvLastChannelIdx)?.urlList?.toSet() ?: emptySet()
+
+            val sorted = IptvRepository(source)
+                .sortChannelLinesBySpeed(
+                    ready.channelGroupList,
+                    excludeUrls = playingChannelUrlList,
+                )
 
             val latest = _uiState.value as? MainUiState.Ready ?: return@runCatching
             if (sorted.size != latest.channelGroupList.size) return@runCatching
@@ -71,6 +90,11 @@ class MainViewModel : ViewModel() {
         }.onFailure {
             // 测速失败不影响正常使用，保持源里原有顺序
         }
+    }
+
+    companion object {
+        /** 打开应用后等待多久再开始测速，先让首帧播起来 */
+        private const val SPEED_SORT_START_DELAY = 15_000L
     }
 
     private suspend fun refreshChannel() {

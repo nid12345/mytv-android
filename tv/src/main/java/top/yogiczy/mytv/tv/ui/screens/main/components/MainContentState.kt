@@ -16,6 +16,7 @@ import top.yogiczy.mytv.core.data.entities.channel.Channel
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelIdx
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelList
+import top.yogiczy.mytv.core.data.entities.channel.ChannelList
 import top.yogiczy.mytv.core.data.entities.epg.EpgProgramme
 import top.yogiczy.mytv.core.data.entities.epg.EpgProgrammeReserve
 import top.yogiczy.mytv.core.data.entities.epg.EpgProgrammeReserveList
@@ -149,23 +150,28 @@ class MainContentState(
         }
     }
 
+    /**
+     * 收藏频道列表（跨订阅源）
+     *
+     * 当前订阅源里存在的频道用源里的最新数据（线路最新、还能享受测速排序）；
+     * 收藏自其它订阅源、当前源里没有的频道，用收藏时保存的快照播放。
+     */
+    fun favoriteChannelList(): ChannelList =
+        settingsViewModel.resolveFavoriteChannelList(channelGroupListProvider().channelList)
+
     private fun getPrevFavoriteChannel(): Channel? {
         if (!settingsViewModel.iptvChannelFavoriteListVisible) return null
 
-        val channelGroupList = channelGroupListProvider()
+        val favorites = favoriteChannelList()
 
-        val favoriteChannelNameList = settingsViewModel.iptvChannelFavoriteList
-        val favoriteChannelList =
-            channelGroupList.channelList.filter { it.name in favoriteChannelNameList }
-
-        return if (_currentChannel in favoriteChannelList && _currentChannel != favoriteChannelList.first()) {
-            val currentIdx = favoriteChannelList.indexOf(_currentChannel)
-            favoriteChannelList[currentIdx - 1]
+        return if (_currentChannel in favorites && _currentChannel != favorites.first()) {
+            val currentIdx = favorites.indexOf(_currentChannel)
+            favorites[currentIdx - 1]
         } else if (settingsViewModel.iptvChannelFavoriteChangeBoundaryJumpOut) {
             settingsViewModel.iptvChannelFavoriteListVisible = false
-            channelGroupList.channelList.lastOrNull()
+            channelGroupListProvider().channelList.lastOrNull()
         } else {
-            favoriteChannelList.lastOrNull()
+            favorites.lastOrNull()
         }
 
     }
@@ -173,20 +179,16 @@ class MainContentState(
     private fun getNextFavoriteChannel(): Channel? {
         if (!settingsViewModel.iptvChannelFavoriteListVisible) return null
 
-        val channelGroupList = channelGroupListProvider()
+        val favorites = favoriteChannelList()
 
-        val favoriteChannelNameList = settingsViewModel.iptvChannelFavoriteList
-        val favoriteChannelList =
-            channelGroupList.channelList.filter { it.name in favoriteChannelNameList }
-
-        return if (_currentChannel in favoriteChannelList && _currentChannel != favoriteChannelList.last()) {
-            val currentIdx = favoriteChannelList.indexOf(_currentChannel)
-            favoriteChannelList[currentIdx + 1]
+        return if (_currentChannel in favorites && _currentChannel != favorites.last()) {
+            val currentIdx = favorites.indexOf(_currentChannel)
+            favorites[currentIdx + 1]
         } else if (settingsViewModel.iptvChannelFavoriteChangeBoundaryJumpOut) {
             settingsViewModel.iptvChannelFavoriteListVisible = false
-            channelGroupList.channelList.firstOrNull()
+            channelGroupListProvider().channelList.firstOrNull()
         } else {
-            favoriteChannelList.firstOrNull()
+            favorites.firstOrNull()
         }
     }
 
@@ -295,10 +297,10 @@ class MainContentState(
         if (!settingsViewModel.iptvChannelFavoriteEnable) return
 
         if (settingsViewModel.iptvChannelFavoriteList.contains(channel.name)) {
-            settingsViewModel.iptvChannelFavoriteList -= channel.name
+            settingsViewModel.toggleFavoriteChannel(channel)
             Snackbar.show("取消收藏：${channel.name}")
         } else {
-            settingsViewModel.iptvChannelFavoriteList += channel.name
+            settingsViewModel.toggleFavoriteChannel(channel)
             Snackbar.show("已收藏：${channel.name}")
         }
     }

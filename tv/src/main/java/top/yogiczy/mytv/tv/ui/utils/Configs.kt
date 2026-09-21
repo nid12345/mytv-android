@@ -2,6 +2,9 @@ package top.yogiczy.mytv.tv.ui.utils
 
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import top.yogiczy.mytv.core.data.entities.channel.Channel
+import top.yogiczy.mytv.core.data.entities.channel.FavoriteChannel
+import top.yogiczy.mytv.core.data.entities.channel.FavoriteChannelList
 import top.yogiczy.mytv.core.data.entities.epg.EpgProgrammeReserveList
 import top.yogiczy.mytv.core.data.entities.epgsource.EpgSource
 import top.yogiczy.mytv.core.data.entities.epgsource.EpgSourceList
@@ -19,6 +22,9 @@ object Configs {
         /** ==================== 应用 ==================== */
         /** 开机自启 */
         APP_BOOT_LAUNCH,
+
+        /** 配置版本，用于把新版本的默认值应用到老配置上 */
+        APP_CONFIG_VERSION,
 
         /** 上一次最新版本 */
         APP_LAST_LATEST_VERSION,
@@ -64,11 +70,17 @@ object Configs {
         /** 是否在频道分组栏顶部显示「换源」快速切换入口 */
         IPTV_SOURCE_QUICK_SWITCH_ENABLE,
 
+        /** 是否启用线路测速排序 */
+        IPTV_SOURCE_LINE_SPEED_SORT_ENABLE,
+
         /** 显示直播源频道收藏列表 */
         IPTV_CHANNEL_FAVORITE_LIST_VISIBLE,
 
-        /** 直播源频道收藏列表 */
+        /** 直播源频道收藏列表（旧，只存频道名） */
         IPTV_CHANNEL_FAVORITE_LIST,
+
+        /** 直播源频道收藏列表（新，含线路快照，跨订阅源） */
+        IPTV_CHANNEL_FAVORITE_ITEMS,
 
         /** 直播源频道收藏换台边界跳出 */
         IPTV_CHANNEL_FAVORITE_CHANGE_BOUNDARY_JUMP_OUT,
@@ -198,15 +210,23 @@ object Configs {
 
     /** 当前直播源 */
     var iptvSourceCurrent: IptvSource
-        get() = Json.decodeFromString(SP.getString(KEY.IPTV_SOURCE_CURRENT.name, "")
-            .ifBlank { Json.encodeToString(Constants.IPTV_SOURCE_LIST.first()) })
+        get() {
+            val source = Json.decodeFromString<IptvSource>(
+                SP.getString(KEY.IPTV_SOURCE_CURRENT.name, "")
+                    .ifBlank { Json.encodeToString(Constants.IPTV_SOURCE_LIST.first()) }
+            )
+
+            // 内置源的属性会随版本调整（比如新增了「是否参与测速」），
+            // 老配置里存的还是旧值，按链接对齐到内置源的定义
+            return Constants.normalizeIptvSource(source)
+        }
         set(value) = SP.putString(KEY.IPTV_SOURCE_CURRENT.name, Json.encodeToString(value))
 
-    /** 直播源列表 */
+    /** 直播源列表（用户自定义部分，内置源不存这里） */
     var iptvSourceList: IptvSourceList
-        get() = Json.decodeFromString(
+        get() = Json.decodeFromString<IptvSourceList>(
             SP.getString(KEY.IPTV_SOURCE_LIST.name, Json.encodeToString(IptvSourceList()))
-        )
+        ).let { IptvSourceList(it.map(Constants::normalizeIptvSource)) }
         set(value) = SP.putString(KEY.IPTV_SOURCE_LIST.name, Json.encodeToString(value))
 
     /** 直播源缓存时间（毫秒） */
@@ -229,6 +249,11 @@ object Configs {
         get() = SP.getBoolean(KEY.IPTV_SOURCE_QUICK_SWITCH_ENABLE.name, true)
         set(value) = SP.putBoolean(KEY.IPTV_SOURCE_QUICK_SWITCH_ENABLE.name, value)
 
+    /** 是否启用线路测速排序 */
+    var iptvSourceLineSpeedSortEnable: Boolean
+        get() = SP.getBoolean(KEY.IPTV_SOURCE_LINE_SPEED_SORT_ENABLE.name, true)
+        set(value) = SP.putBoolean(KEY.IPTV_SOURCE_LINE_SPEED_SORT_ENABLE.name, value)
+
     /** 是否启用直播源频道收藏 */
     var iptvChannelFavoriteEnable: Boolean
         get() = SP.getBoolean(KEY.IPTV_CHANNEL_FAVORITE_ENABLE.name, true)
@@ -239,10 +264,75 @@ object Configs {
         get() = SP.getBoolean(KEY.IPTV_CHANNEL_FAVORITE_LIST_VISIBLE.name, false)
         set(value) = SP.putBoolean(KEY.IPTV_CHANNEL_FAVORITE_LIST_VISIBLE.name, value)
 
-    /** 直播源频道收藏列表 */
+    /**
+     * 直播源频道收藏列表（含线路快照）
+     *
+     * 存的是频道快照而不只是频道名，切换订阅源后收藏依然能显示、能播放。
+     * 首次读取时会把旧版本只存名字的收藏迁移过来（这种条目要等再次收藏到
+     * 对应频道的订阅源时才会补上线路地址）。
+     */
+    var iptvChannelFavoriteItems: FavoriteChannelList
+        get() {
+            val raw = SP.getString(KEY.IPTV_CHANNEL_FAVORITE_ITEMS.name, "")
+            if (raw.isNotBlank()) {
+                runCatching { Json.decodeFromString<FavoriteChannelList>(raw) }
+                    .onSuccess { return it }
+            }
+
+            val legacy = SP.getStringSet(KEY.IPTV_CHANNEL_FAVORITE_LIST.name, emptySet())
+            return FavoriteChannelList(legacy.map { FavoriteChannel(name = it) })
+        }
+        set(value) {
+            SP.putString(KEY.IPTV_CHANNEL_FAVORITE_ITEMS.name, Json.encodeToString(value))
+            // 旧字段同步一份，保证旧版本回退读取、以及手机端页面推送时表现一致
+            SP.putStringSet(
+                KEY.IPTV_CHANNEL_FAVORITE_LIST.name,
+                value.map { it.name }.toSet(),
+            )
+        }
+
+    /**
+     * 直播源频道收藏列表（只暴露频道名）
+     *
+     * 兼容既有调用方（频道界面按名字判断是否已收藏）与手机端配置推送。
+     */
     var iptvChannelFavoriteList: Set<String>
-        get() = SP.getStringSet(KEY.IPTV_CHANNEL_FAVORITE_LIST.name, emptySet())
-        set(value) = SP.putStringSet(KEY.IPTV_CHANNEL_FAVORITE_LIST.name, value)
+        get() = iptvChannelFavoriteItems.map { it.name }.toSet()
+        set(value) {
+            val old = iptvChannelFavoriteItems
+            iptvChannelFavoriteItems = FavoriteChannelList(
+                value.map { name ->
+                    old.firstOrNull { it.name == name } ?: FavoriteChannel(name = name)
+                }
+            )
+        }
+
+    /**
+     * 把收藏里的频道快照对齐到当前订阅源的频道
+     *
+     * 收藏来自多个订阅源，只有在该源里出现过，才能补上/刷新它的线路地址。
+     * 补上以后即使切走，也能继续播放。
+     */
+    fun syncFavoriteChannels(channelList: List<Channel>) {
+        if (channelList.isEmpty()) return
+
+        val items = iptvChannelFavoriteItems
+        var changed = false
+
+        val synced = items.map { favorite ->
+            val channel = channelList.firstOrNull { it.name == favorite.name } ?: return@map favorite
+            val fresh = FavoriteChannel(
+                name = channel.name,
+                epgName = channel.epgName,
+                urlList = channel.urlList,
+                logo = channel.logo,
+            )
+            if (fresh != favorite) changed = true
+            fresh
+        }
+
+        if (changed) iptvChannelFavoriteItems = FavoriteChannelList(synced)
+    }
 
     /** 直播源频道收藏换台边界跳出 */
     var iptvChannelFavoriteChangeBoundaryJumpOut: Boolean
@@ -321,8 +411,9 @@ object Configs {
         set(value) = SP.putBoolean(KEY.UI_SHOW_CHANNEL_LOGO.name, value)
 
     /** 使用经典选台界面 */
+    /** 使用经典选台界面（三段式：左分组 / 中频道 / 右节目信息） */
     var uiUseClassicPanelScreen: Boolean
-        get() = SP.getBoolean(KEY.UI_USE_CLASSIC_PANEL_SCREEN.name, false)
+        get() = SP.getBoolean(KEY.UI_USE_CLASSIC_PANEL_SCREEN.name, true)
         set(value) = SP.putBoolean(KEY.UI_USE_CLASSIC_PANEL_SCREEN.name, value)
 
     /** 界面密度缩放比例 */
@@ -377,10 +468,13 @@ object Configs {
         get() = SP.getLong(KEY.VIDEO_PLAYER_LOAD_TIMEOUT.name, Constants.VIDEO_PLAYER_LOAD_TIMEOUT)
         set(value) = SP.putLong(KEY.VIDEO_PLAYER_LOAD_TIMEOUT.name, value)
 
-    /** 播放器 显示模式 */
+    /** 播放器 显示模式（默认 16:9，铺满绝大多数电视与显示器） */
     var videoPlayerDisplayMode: VideoPlayerDisplayMode
         get() = VideoPlayerDisplayMode.fromValue(
-            SP.getInt(KEY.VIDEO_PLAYER_DISPLAY_MODE.name, VideoPlayerDisplayMode.ORIGINAL.value)
+            SP.getInt(
+                KEY.VIDEO_PLAYER_DISPLAY_MODE.name,
+                VideoPlayerDisplayMode.SIXTEEN_NINE.value,
+            )
         )
         set(value) = SP.putInt(KEY.VIDEO_PLAYER_DISPLAY_MODE.name, value.value)
 
@@ -456,4 +550,24 @@ object Configs {
             }
         }
     }
+
+    /**
+     * 升级后的一次性配置迁移
+     *
+     * 需要给老用户「刷上新版本默认值」时，把 [CURRENT_CONFIG_VERSION] +1 并在下面补对应逻辑。
+     * 注意：SharedPreferences 分不清「没设置」和「设置为默认值」，所以新默认值一般直接改
+     * getter 的默认值即可——没设置过的用户会自动跟随，显式设置过的保持不变。
+     */
+    fun migrateIfNeeded() {
+        val savedVersion = SP.getInt(KEY.APP_CONFIG_VERSION.name, 0)
+        if (savedVersion >= CURRENT_CONFIG_VERSION) return
+
+        // v1（1.3）：三段式选台与 16:9 显示改为默认值（getter 默认值已更新，
+        // 老配置里没有这两个键的用户自动跟随新默认，无需写库）
+
+        SP.putInt(KEY.APP_CONFIG_VERSION.name, CURRENT_CONFIG_VERSION)
+    }
+
+    /** 当前配置版本，每次需要把新默认值刷到老配置上时 +1 */
+    private const val CURRENT_CONFIG_VERSION = 1
 }

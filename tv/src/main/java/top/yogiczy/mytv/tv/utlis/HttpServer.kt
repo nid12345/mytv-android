@@ -157,8 +157,10 @@ object HttpServer : Loggable() {
         }
 
         newIptvSource?.let {
-            Configs.iptvSourceList = IptvSourceList(Configs.iptvSourceList + it)
-            Configs.iptvSourceCurrent = it
+            // 推送的地址若是内置源（比如默认源），按内置定义对齐属性
+            Configs.iptvSourceList =
+                IptvSourceList(Configs.iptvSourceList + Constants.normalizeIptvSource(it))
+            Configs.iptvSourceCurrent = Constants.normalizeIptvSource(it)
         }
 
         wrapResponse(response).send("success")

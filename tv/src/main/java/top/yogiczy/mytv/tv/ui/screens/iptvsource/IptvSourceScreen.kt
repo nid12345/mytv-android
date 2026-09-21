@@ -28,8 +28,8 @@ import top.yogiczy.mytv.tv.ui.material.Drawer
 import top.yogiczy.mytv.tv.ui.material.DrawerPosition
 import top.yogiczy.mytv.tv.ui.material.LocalPopupManager
 import top.yogiczy.mytv.tv.ui.material.SimplePopup
+import top.yogiczy.mytv.tv.ui.screens.iptvsource.components.AddIptvSourceDialog
 import top.yogiczy.mytv.tv.ui.screens.iptvsource.components.IptvSourceItem
-import top.yogiczy.mytv.tv.ui.screens.settings.components.SettingsCategoryPush
 import top.yogiczy.mytv.tv.ui.theme.MyTVTheme
 import top.yogiczy.mytv.tv.ui.tooling.PreviewWithLayoutGrids
 import top.yogiczy.mytv.tv.ui.utils.focusOnLaunchedSaveable
@@ -44,6 +44,8 @@ fun IptvSourceScreen(
     currentIptvSourceProvider: () -> IptvSource = { IptvSource() },
     onIptvSourceSelected: (IptvSource) -> Unit = {},
     onIptvSourceDeleted: (IptvSource) -> Unit = {},
+    /** 手动填写的直播源（名称 + 链接），由调用方保存并切换 */
+    onIptvSourceAdded: (IptvSource) -> Unit = {},
     onClose: () -> Unit = {},
 ) {
     val iptvSourceList = iptvSourceListProvider().let { Constants.IPTV_SOURCE_LIST + it }
@@ -87,7 +89,7 @@ fun IptvSourceScreen(
                 val popupManager = LocalPopupManager.current
                 val focusRequester = remember { FocusRequester() }
                 var isFocused by remember { mutableStateOf(false) }
-                var showPush by remember { mutableStateOf(false) }
+                var showAdd by remember { mutableStateOf(false) }
 
                 ListItem(
                     modifier = modifier
@@ -98,7 +100,7 @@ fun IptvSourceScreen(
                             focusRequester = focusRequester,
                             onSelect = {
                                 popupManager.push(focusRequester, true)
-                                showPush = true
+                                showAdd = true
                             },
                         ),
                     selected = false,
@@ -109,10 +111,15 @@ fun IptvSourceScreen(
                 )
 
                 SimplePopup(
-                    visibleProvider = { showPush },
-                    onDismissRequest = { showPush = false },
+                    visibleProvider = { showAdd },
+                    onDismissRequest = { showAdd = false },
                 ) {
-                    SettingsCategoryPush()
+                    AddIptvSourceDialog(
+                        onConfirm = { name, url ->
+                            showAdd = false
+                            onIptvSourceAdded(IptvSource(name = name, url = url))
+                        },
+                    )
                 }
             }
         }

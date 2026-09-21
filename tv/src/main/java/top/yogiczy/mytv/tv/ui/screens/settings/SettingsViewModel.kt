@@ -7,6 +7,11 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import top.yogiczy.mytv.core.data.entities.channel.Channel
+import top.yogiczy.mytv.core.data.entities.channel.ChannelList
+import top.yogiczy.mytv.core.data.entities.channel.FavoriteChannel
+import top.yogiczy.mytv.core.data.entities.channel.FavoriteChannel.Companion.toFavoriteChannel
+import top.yogiczy.mytv.core.data.entities.channel.FavoriteChannelList
 import top.yogiczy.mytv.core.data.entities.epg.EpgProgrammeReserveList
 import top.yogiczy.mytv.core.data.entities.epgsource.EpgSource
 import top.yogiczy.mytv.core.data.entities.epgsource.EpgSourceList
@@ -144,13 +149,49 @@ class SettingsViewModel : ViewModel() {
             Configs.iptvChannelFavoriteListVisible = value
         }
 
-    private var _iptvChannelFavoriteList by mutableStateOf(Configs.iptvChannelFavoriteList)
-    var iptvChannelFavoriteList: Set<String>
-        get() = _iptvChannelFavoriteList
+    private var _iptvSourceLineSpeedSortEnable by mutableStateOf(Configs.iptvSourceLineSpeedSortEnable)
+    var iptvSourceLineSpeedSortEnable: Boolean
+        get() = _iptvSourceLineSpeedSortEnable
         set(value) {
-            _iptvChannelFavoriteList = value
-            Configs.iptvChannelFavoriteList = value
+            _iptvSourceLineSpeedSortEnable = value
+            Configs.iptvSourceLineSpeedSortEnable = value
         }
+
+    private var _iptvChannelFavoriteItems by mutableStateOf(Configs.iptvChannelFavoriteItems)
+    var iptvChannelFavoriteItems: FavoriteChannelList
+        get() = _iptvChannelFavoriteItems
+        set(value) {
+            _iptvChannelFavoriteItems = value
+            Configs.iptvChannelFavoriteItems = value
+        }
+
+    /** 收藏的频道名集合（频道界面按名字判断是否已收藏） */
+    val iptvChannelFavoriteList: Set<String>
+        get() = _iptvChannelFavoriteItems.map { it.name }.toSet()
+
+    /** 收藏 / 取消收藏 */
+    fun toggleFavoriteChannel(channel: Channel) {
+        val items = _iptvChannelFavoriteItems
+        iptvChannelFavoriteItems =
+            if (items.any { it.name == channel.name })
+                FavoriteChannelList(items.filterNot { it.name == channel.name })
+            else
+                FavoriteChannelList(items + channel.toFavoriteChannel())
+    }
+
+    /**
+     * 把收藏里的频道快照对齐到当前订阅源
+     *
+     * 收藏是跨订阅源的，只有在对应源里出现过，才能补上/刷新它的线路地址。
+     */
+    fun syncFavoriteChannels(channelList: List<Channel>) {
+        Configs.syncFavoriteChannels(channelList)
+        _iptvChannelFavoriteItems = Configs.iptvChannelFavoriteItems
+    }
+
+    /** 收藏列表：当前订阅源优先，源里没有的用收藏快照 */
+    fun resolveFavoriteChannelList(currentChannelList: List<Channel>): ChannelList =
+        _iptvChannelFavoriteItems.resolve(currentChannelList)
 
     private var _iptvChannelFavoriteChangeBoundaryJumpOut by mutableStateOf(Configs.iptvChannelFavoriteChangeBoundaryJumpOut)
     var iptvChannelFavoriteChangeBoundaryJumpOut: Boolean
@@ -386,7 +427,8 @@ class SettingsViewModel : ViewModel() {
         _iptvChannelFavoriteEnable = Configs.iptvChannelFavoriteEnable
         _iptvSourceQuickSwitchEnable = Configs.iptvSourceQuickSwitchEnable
         _iptvChannelFavoriteListVisible = Configs.iptvChannelFavoriteListVisible
-        _iptvChannelFavoriteList = Configs.iptvChannelFavoriteList
+        _iptvSourceLineSpeedSortEnable = Configs.iptvSourceLineSpeedSortEnable
+        _iptvChannelFavoriteItems = Configs.iptvChannelFavoriteItems
         _iptvChannelFavoriteChangeBoundaryJumpOut = Configs.iptvChannelFavoriteChangeBoundaryJumpOut
         _iptvChannelGroupHiddenList = Configs.iptvChannelGroupHiddenList
         _iptvHybridMode = Configs.iptvHybridMode

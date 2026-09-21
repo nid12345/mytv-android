@@ -92,6 +92,7 @@ fun ClassicChannelScreen(
     currentIptvSourceProvider: () -> IptvSource = { IptvSource() },
     onIptvSourceSelected: (IptvSource) -> Unit = {},
     onIptvSourceDeleted: (IptvSource) -> Unit = {},
+    onIptvSourceAdded: (IptvSource) -> Unit = {},
     onClose: () -> Unit = {},
 ) {
     val screenAutoCloseState = rememberScreenAutoCloseState(onTimeout = onClose)
@@ -160,6 +161,7 @@ fun ClassicChannelScreen(
                     currentIptvSourceProvider = currentIptvSourceProvider,
                     onIptvSourceSelected = onIptvSourceSelected,
                     onIptvSourceDeleted = onIptvSourceDeleted,
+                    onIptvSourceAdded = onIptvSourceAdded,
                     onUserAction = { screenAutoCloseState.active() },
                 )
             } else {
