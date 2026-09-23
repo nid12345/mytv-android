@@ -130,6 +130,22 @@ fun SettingsCategoryIptv(
 
         item {
             SettingsListItem(
+                headlineContent = "自动连播",
+                supportingContent = if (settingsViewModel.iptvVodAutoPlayNextEnable)
+                    "「潮汕节目回放」等点播源：一个视频播完自动播下一个（同分组播完接下一分组）"
+                else "已关闭，视频播完后停住",
+                trailingContent = {
+                    Switch(settingsViewModel.iptvVodAutoPlayNextEnable, null)
+                },
+                onSelected = {
+                    settingsViewModel.iptvVodAutoPlayNextEnable =
+                        !settingsViewModel.iptvVodAutoPlayNextEnable
+                },
+            )
+        }
+
+        item {
+            SettingsListItem(
                 headlineContent = "换台反转",
                 supportingContent = if (settingsViewModel.iptvChannelChangeFlip) "方向键上：下一个频道；方向键下：上一个频道"
                 else "方向键上：上一个频道；方向键下：下一个频道",

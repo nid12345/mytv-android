@@ -278,6 +278,15 @@ fun Modifier.customBackground() = background(
     )
 )
 
+/**
+ * 焦点恢复（带兜底）
+ *
+ * 列表滚动、频道列表被重建（例如线路测速完成后整体替换）时，之前记住的那一项
+ * 在列表里可能已经找不到了，[onRestoreFailed] 里按下标取 FocusRequester 就会拿到 -1。
+ * 这里是焦点恢复链路上唯一会跑「用户提供的取下标逻辑」的地方，**必须整体兜住异常**：
+ * 旧实现只把 `requestFocus()` 包进 runCatching，`onRestoreFailed()` 本身抛出的
+ * `IndexOutOfBoundsException` 会一路冒到 Compose 崩溃（表现为「菜单快速下滑卡退」）。
+ */
 @Composable
 @OptIn(ExperimentalComposeUiApi::class)
 fun Modifier.saveFocusRestorer(onRestoreFailed: (() -> FocusRequester)? = null): Modifier {
@@ -286,8 +295,8 @@ fun Modifier.saveFocusRestorer(onRestoreFailed: (() -> FocusRequester)? = null):
     return focusRestorer {
         if (onRestoreFailed == null) return@focusRestorer FocusRequester.Default
 
-        val result = onRestoreFailed()
         runCatching {
+            val result = onRestoreFailed()
             result.requestFocus()
             result
         }.getOrElse { FocusRequester.Default }
@@ -295,3 +304,11 @@ fun Modifier.saveFocusRestorer(onRestoreFailed: (() -> FocusRequester)? = null):
 }
 
 fun FocusRequester.saveRequestFocus() = runCatching { requestFocus() }
+
+/**
+ * 按下标取 FocusRequester，越界（含找不到对应项时的 -1）时返回 null
+ *
+ * 列表内容会在滚动过程中被替换，直接下标取值是崩溃高发点，统一走这里。
+ */
+fun List<FocusRequester>.getOrNullAt(index: Int): FocusRequester? =
+    if (index in indices) this[index] else null

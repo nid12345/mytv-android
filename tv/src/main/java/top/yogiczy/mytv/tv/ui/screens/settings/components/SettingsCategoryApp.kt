@@ -6,6 +6,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.Switch
 import kotlinx.coroutines.launch
@@ -39,14 +40,27 @@ fun SettingsCategoryApp(
         item {
             val popupManager = LocalPopupManager.current
             val focusRequester = remember { FocusRequester() }
+            val context = LocalContext.current
+            val currentVersion = remember {
+                runCatching {
+                    context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                }.getOrNull() ?: ""
+            }
 
             SettingsListItem(
                 modifier = Modifier.focusRequester(focusRequester),
                 headlineContent = "应用更新",
-                supportingContent = "最新版本：v${updateViewModel.latestRelease.version}",
-                trailingContent = if (updateViewModel.isUpdateAvailable) "发现新版本" else "无更新",
+                supportingContent = when {
+                    updateViewModel.isChecking -> "正在检查更新… 当前版本 v$currentVersion"
+                    updateViewModel.hasChecked ->
+                        "当前版本 v$currentVersion · 最新 v${updateViewModel.latestRelease.version}"
+                    else -> "当前版本 v$currentVersion · 点按检查是否有新版本"
+                },
+                trailingContent = if (updateViewModel.isUpdateAvailable) "发现新版本" else "检查",
                 onSelected = {
                     popupManager.push(focusRequester, true)
+                    // 计数 +1 让更新面板强制重查一次
+                    updateViewModel.manualCheckRequest += 1
                     updateViewModel.visible = true
                 },
             )

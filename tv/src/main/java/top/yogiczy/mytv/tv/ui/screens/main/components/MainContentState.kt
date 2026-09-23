@@ -154,6 +154,66 @@ class MainContentState(
                 _currentPlaybackEpgProgramme
             )
         }
+
+        // 点播源（潮汕节目回放）一个视频播完，自动接着播下一个
+        videoPlayerState.onEnded { autoPlayNextVodChannelOrNot() }
+    }
+
+    /** 当前频道所在分组的名字（找不到返回 null） */
+    private fun currentGroupName(): String? =
+        channelGroupListProvider()
+            .firstOrNull { group -> group.channelList.any { it.name == _currentChannel.name } }
+            ?.name
+
+    /**
+     * 是否处于「自动连播」场景
+     *
+     * 只对点播源生效。潮汕节目回放有两种用法：作为独立订阅源浏览，
+     * 或作为附加分组挂在默认直播源末尾，两种都要能连播；直播源不受影响。
+     */
+    private fun isAutoPlayNextScene(): Boolean {
+        if (!settingsViewModel.iptvVodAutoPlayNextEnable) return false
+
+        if (Constants.isChaoshanReplaySource(settingsViewModel.iptvSourceCurrent)) return true
+        return currentGroupName() == Constants.CHAOSHAN_REPLAY_SOURCE.name
+    }
+
+    /**
+     * 点播连播的下一个视频
+     *
+     * 同分组内取下一条；本分组播完则接下一个分组的第一条；整个源播完返回 null。
+     * 全按频道名比较，避免线路测速重建列表后对象不一致导致找不到。
+     */
+    private fun getNextVodChannel(): Channel? {
+        val groupList = channelGroupListProvider()
+        val groupIdx = groupList.indexOfFirst { group ->
+            group.channelList.any { it.name == _currentChannel.name }
+        }
+        if (groupIdx < 0) return null
+
+        val channelList = groupList[groupIdx].channelList
+        val idx = channelList.indexOfFirst { it.name == _currentChannel.name }
+
+        channelList.getOrNull(idx + 1)?.takeIf { it.urlList.isNotEmpty() }?.let { return it }
+
+        for (i in groupIdx + 1 until groupList.size) {
+            groupList[i].channelList.firstOrNull { it.urlList.isNotEmpty() }?.let { return it }
+        }
+        return null
+    }
+
+    private fun autoPlayNextVodChannelOrNot() {
+        if (!isAutoPlayNextScene()) return
+
+        val next = getNextVodChannel()
+        if (next == null) {
+            log.i("「${Constants.CHAOSHAN_REPLAY_SOURCE.name}」已播完最后一个视频")
+            Snackbar.show("「${Constants.CHAOSHAN_REPLAY_SOURCE.name}」已全部播完")
+            return
+        }
+
+        log.i("自动连播下一个：${next.name}")
+        changeCurrentChannel(next)
     }
 
     /**

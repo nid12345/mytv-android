@@ -18,6 +18,8 @@ interface GitReleaseParser {
 
     companion object {
         val instances = listOf(
+            // 定制版走自己的 Release 接口，必须排在 github 通用解析之前
+            CustomReleaseParser(),
             GithubGitReleaseParser(),
             GiteeGitReleaseParser(),
             CustomGitReleaseParser(),

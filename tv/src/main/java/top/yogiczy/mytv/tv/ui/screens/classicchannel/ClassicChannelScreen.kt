@@ -113,7 +113,11 @@ fun ClassicChannelScreen(
             if (channelFavoriteListVisible)
                 ClassicPanelScreenFavoriteChannelGroup
             else
-                channelGroupList[max(0, channelGroupList.channelGroupIdx(currentChannelProvider()))]
+                // 分组可能被「分组管理」全部隐藏、或订阅源解析结果为空，
+                // 这时 channelGroupIdx 返回 -1，直接下标取值会越界崩溃
+                channelGroupList.getOrNull(
+                    max(0, channelGroupList.channelGroupIdx(currentChannelProvider()))
+                ) ?: ChannelGroup()
         )
     }
     var focusedChannel by remember { mutableStateOf(currentChannelProvider()) }

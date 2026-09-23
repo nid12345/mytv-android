@@ -53,6 +53,9 @@ abstract class VideoPlayer(
     private val onMetadataListeners = mutableListOf<(metadata: Metadata) -> Unit>()
     private val onInterruptListeners = mutableListOf<() -> Unit>()
 
+    /** 播放到结尾（点播视频播完）——直播流正常不会触发 */
+    private val onEndedListeners = mutableListOf<() -> Unit>()
+
     private fun clearAllListeners() {
         onResolutionListeners.clear()
         onErrorListeners.clear()
@@ -64,6 +67,7 @@ abstract class VideoPlayer(
         onCurrentPositionChanged.clear()
         onMetadataListeners.clear()
         onInterruptListeners.clear()
+        onEndedListeners.clear()
     }
 
     protected fun triggerResolution(width: Int, height: Int) {
@@ -101,6 +105,10 @@ abstract class VideoPlayer(
 
     protected fun triggerIsPlayingChanged(isPlaying: Boolean) {
         onIsPlayingChanged.forEach { it(isPlaying) }
+    }
+
+    protected fun triggerEnded() {
+        onEndedListeners.forEach { it() }
     }
 
     protected fun triggerDuration(duration: Long) {
@@ -161,6 +169,11 @@ abstract class VideoPlayer(
 
     fun onInterrupt(listener: () -> Unit) {
         onInterruptListeners.add(listener)
+    }
+
+    /** 播放到结尾（一个视频播完），用于点播源自动连播 */
+    fun onEnded(listener: () -> Unit) {
+        onEndedListeners.add(listener)
     }
 
     data class PlaybackException(val errorCodeName: String, val errorCode: Int) :

@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -20,6 +21,7 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.flow.distinctUntilChanged
 import top.yogiczy.mytv.tv.ui.screens.settings.LocalSettings
 import top.yogiczy.mytv.tv.ui.theme.MyTVTheme
+import top.yogiczy.mytv.tv.ui.utils.getOrNullAt
 import top.yogiczy.mytv.tv.ui.utils.ifElse
 import top.yogiczy.mytv.tv.ui.utils.saveFocusRestorer
 import kotlin.math.max
@@ -36,7 +38,7 @@ fun EpgDayItemList(
     val dayList = dayListProvider()
     val currentDay = currentDayProvider()
 
-    val itemFocusRequesterList = List(dayList.size) { FocusRequester() }
+    val itemFocusRequesterList = remember(dayList) { List(dayList.size) { FocusRequester() } }
     val listState = rememberLazyListState(max(0, dayList.indexOf(currentDay) - 2))
 
     LaunchedEffect(listState) {
@@ -48,7 +50,11 @@ fun EpgDayItemList(
     LazyColumn(
         modifier = modifier.ifElse(
             LocalSettings.current.uiFocusOptimize,
-            Modifier.saveFocusRestorer { itemFocusRequesterList[dayList.indexOf(currentDay)] },
+            // 当前日期不在列表里时 indexOf 为 -1，按下标取会越界崩溃，这里统一兜住
+            Modifier.saveFocusRestorer {
+                itemFocusRequesterList.getOrNullAt(dayList.indexOf(currentDay))
+                    ?: FocusRequester.Default
+            },
         ),
         state = listState,
         contentPadding = PaddingValues(vertical = 8.dp),

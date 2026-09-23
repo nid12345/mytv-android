@@ -26,10 +26,18 @@ fun UpdateContent(
     modifier: Modifier = Modifier,
     onDismissRequest: () -> Unit = {},
     releaseProvider: () -> GitRelease = { GitRelease() },
+    currentVersionProvider: () -> String = { "" },
     isUpdateAvailableProvider: () -> Boolean = { false },
+    isCheckingProvider: () -> Boolean = { false },
+    isUpdatingProvider: () -> Boolean = { false },
+    downloadProgressProvider: () -> Int = { 0 },
     onUpdateAndInstall: () -> Unit = {},
 ) {
     val release = releaseProvider()
+    val isUpdateAvailable = isUpdateAvailableProvider()
+    val isChecking = isCheckingProvider()
+    val isUpdating = isUpdatingProvider()
+    val downloadProgress = downloadProgressProvider()
 
     Row(
         modifier = modifier
@@ -39,45 +47,76 @@ fun UpdateContent(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(
-            modifier = Modifier.width(340.dp),
+            modifier = Modifier.width(360.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            Text("应用更新", style = MaterialTheme.typography.headlineMedium)
+
             Text(
-                "最新版本: v${release.version}",
-                style = MaterialTheme.typography.headlineMedium
+                "当前版本: v${currentVersionProvider()}",
+                style = MaterialTheme.typography.bodyLarge,
+            )
+
+            Text(
+                text = when {
+                    isUpdating -> "正在下载新版本…"
+                    isChecking -> "正在检查更新…"
+                    else -> "最新版本: v${release.version}"
+                },
+                style = MaterialTheme.typography.bodyLarge,
             )
 
             LazyColumn {
                 item {
-                    Text(release.description, style = MaterialTheme.typography.bodyLarge)
+                    Text(release.description, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
 
-        if (isUpdateAvailableProvider()) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                WideButton(
-                    modifier = Modifier
-                        .focusOnLaunched()
-                        .handleKeyEvents(onSelect = onUpdateAndInstall),
-                    onClick = { },
-                    title = { Text("立即更新") },
-                )
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            when {
+                isUpdating -> {
+                    WideButton(
+                        modifier = Modifier
+                            .focusOnLaunched()
+                            .handleKeyEvents(onSelect = { }),
+                        onClick = { },
+                        title = { Text("正在下载 $downloadProgress%") },
+                    )
 
-                WideButton(
-                    modifier = Modifier.handleKeyEvents(onSelect = onDismissRequest),
-                    onClick = { },
-                    title = { Text("忽略") },
-                )
+                    WideButton(
+                        modifier = Modifier.handleKeyEvents(onSelect = onDismissRequest),
+                        onClick = { },
+                        title = { Text("后台下载") },
+                    )
+                }
+
+                isUpdateAvailable -> {
+                    WideButton(
+                        modifier = Modifier
+                            .focusOnLaunched()
+                            .handleKeyEvents(onSelect = onUpdateAndInstall),
+                        onClick = { },
+                        title = { Text("立即更新") },
+                    )
+
+                    WideButton(
+                        modifier = Modifier.handleKeyEvents(onSelect = onDismissRequest),
+                        onClick = { },
+                        title = { Text("忽略") },
+                    )
+                }
+
+                else -> {
+                    WideButton(
+                        modifier = Modifier
+                            .focusOnLaunched()
+                            .handleKeyEvents(onSelect = onDismissRequest),
+                        onClick = { },
+                        title = { Text(if (isChecking) "正在检查…" else "当前为最新版本") },
+                    )
+                }
             }
-        } else {
-            WideButton(
-                modifier = Modifier
-                    .focusOnLaunched()
-                    .handleKeyEvents(onSelect = onDismissRequest),
-                onClick = { },
-                title = { Text("当前为最新版本") },
-            )
         }
     }
 }
@@ -90,11 +129,13 @@ private fun UpdateDialogPreview() {
             UpdateContent(
                 releaseProvider = {
                     GitRelease(
-                        version = "1.0.0",
+                        version = "1.7",
                         downloadUrl = "",
                         description = "更新日志".repeat(100),
                     )
                 },
+                currentVersionProvider = { "1.6" },
+                isUpdateAvailableProvider = { true },
             )
         }
     }

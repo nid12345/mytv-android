@@ -44,6 +44,7 @@ import top.yogiczy.mytv.tv.ui.screens.classicchannel.ClassicPanelScreenSystemApp
 import top.yogiczy.mytv.tv.ui.screens.settings.LocalSettings
 import top.yogiczy.mytv.tv.ui.theme.MyTVTheme
 import top.yogiczy.mytv.tv.ui.utils.focusOnLaunchedSaveable
+import top.yogiczy.mytv.tv.ui.utils.getOrNullAt
 import top.yogiczy.mytv.tv.ui.utils.handleKeyEvents
 import top.yogiczy.mytv.tv.ui.utils.ifElse
 import top.yogiczy.mytv.tv.ui.utils.saveFocusRestorer
@@ -61,9 +62,24 @@ fun ClassicChannelGroupItemList(
 ) {
     val channelGroupList = channelGroupListProvider()
     val initialChannelGroup = initialChannelGroupProvider()
-    val itemFocusRequesterList = List(channelGroupList.size) { FocusRequester() }
+
+    // 分组栏每次重组都会重新构造 ChannelGroupList，若跟着重建 FocusRequester，
+    // 滚动时正在生效的实例会被不断替换，焦点容易丢、也容易踩到重新绑定过程中的空档。
+    // 这里按「分组名序列」缓存：名字不变就复用同一批 FocusRequester。
+    val channelGroupNames = channelGroupList.map { it.name }
+    val itemFocusRequesterList =
+        remember(channelGroupNames) { List(channelGroupNames.size) { FocusRequester() } }
 
     var focusedChannelGroup by remember { mutableStateOf(initialChannelGroup) }
+
+    // 分组列表被整体重建（例如线路测速完成后替换整份列表，列表里的对象全是新的）时，
+    // 记住的那个分组对象在新列表里已经找不到；按名字重新绑定一次，
+    // 否则后续按下标取 FocusRequester 会拿到 -1（旧的崩溃点）。
+    LaunchedEffect(channelGroupList) {
+        if (channelGroupList.any { it.name == focusedChannelGroup.name }) return@LaunchedEffect
+        channelGroupList.firstOrNull { it.name == initialChannelGroup.name }
+            ?.let { focusedChannelGroup = it }
+    }
 
     val listState = rememberLazyListState(max(0, channelGroupList.indexOf(initialChannelGroup) - 2))
     LaunchedEffect(listState) {
@@ -80,6 +96,7 @@ fun ClassicChannelGroupItemList(
     val firstFocusRequester = remember { FocusRequester() }
     val lastFocusRequester = remember { FocusRequester() }
     fun scrollToFirst() {
+        if (channelGroupList.isEmpty()) return
         coroutineScope.launch {
             listState.scrollToItem(0)
             firstFocusRequester.saveRequestFocus()
@@ -87,6 +104,7 @@ fun ClassicChannelGroupItemList(
     }
 
     fun scrollToLast() {
+        if (channelGroupList.isEmpty()) return
         coroutineScope.launch {
             listState.scrollToItem(channelGroupList.lastIndex)
             lastFocusRequester.saveRequestFocus()
@@ -101,7 +119,9 @@ fun ClassicChannelGroupItemList(
             .ifElse(
                 LocalSettings.current.uiFocusOptimize,
                 Modifier.saveFocusRestorer {
-                    itemFocusRequesterList[channelGroupList.indexOf(focusedChannelGroup)]
+                    // 按名字找，找不到就交给默认焦点（不再有 -1 下标越界）
+                    val idx = channelGroupList.indexOfFirst { it.name == focusedChannelGroup.name }
+                    itemFocusRequesterList.getOrNullAt(idx) ?: FocusRequester.Default
                 },
             ),
         state = listState,

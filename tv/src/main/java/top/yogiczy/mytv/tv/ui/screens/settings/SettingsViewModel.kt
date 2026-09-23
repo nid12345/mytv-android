@@ -174,6 +174,14 @@ class SettingsViewModel : ViewModel() {
             Configs.iptvChaoshanSourceEnable = value
         }
 
+    private var _iptvVodAutoPlayNextEnable by mutableStateOf(Configs.iptvVodAutoPlayNextEnable)
+    var iptvVodAutoPlayNextEnable: Boolean
+        get() = _iptvVodAutoPlayNextEnable
+        set(value) {
+            _iptvVodAutoPlayNextEnable = value
+            Configs.iptvVodAutoPlayNextEnable = value
+        }
+
     private var _iptvChannelFavoriteItems by mutableStateOf(Configs.iptvChannelFavoriteItems)
     var iptvChannelFavoriteItems: FavoriteChannelList
         get() = _iptvChannelFavoriteItems
@@ -366,12 +374,28 @@ class SettingsViewModel : ViewModel() {
             Configs.uiScreenAutoCloseDelay = value
         }
 
+    private var _updateRemindEnable by mutableStateOf(Configs.updateRemindEnable)
+    var updateRemindEnable: Boolean
+        get() = _updateRemindEnable
+        set(value) {
+            _updateRemindEnable = value
+            Configs.updateRemindEnable = value
+        }
+
     private var _updateForceRemind by mutableStateOf(Configs.updateForceRemind)
     var updateForceRemind: Boolean
         get() = _updateForceRemind
         set(value) {
             _updateForceRemind = value
             Configs.updateForceRemind = value
+        }
+
+    private var _updateDownloadRoute by mutableStateOf(Configs.updateDownloadRoute)
+    var updateDownloadRoute: Configs.UpdateDownloadRoute
+        get() = _updateDownloadRoute
+        set(value) {
+            _updateDownloadRoute = value
+            Configs.updateDownloadRoute = value
         }
 
     private var _updateChannel by mutableStateOf(Configs.updateChannel)
@@ -477,6 +501,7 @@ class SettingsViewModel : ViewModel() {
         _iptvChannelFavoriteListVisible = Configs.iptvChannelFavoriteListVisible
         _iptvSourceLineSpeedSortEnable = Configs.iptvSourceLineSpeedSortEnable
         _iptvChaoshanSourceEnable = Configs.iptvChaoshanSourceEnable
+        _iptvVodAutoPlayNextEnable = Configs.iptvVodAutoPlayNextEnable
         _iptvChannelFavoriteItems = Configs.iptvChannelFavoriteItems
         _iptvChannelFavoriteChangeBoundaryJumpOut = Configs.iptvChannelFavoriteChangeBoundaryJumpOut
         _iptvSourceGroupHiddenMap = Configs.iptvSourceGroupHiddenMap
@@ -495,8 +520,10 @@ class SettingsViewModel : ViewModel() {
         _uiTimeShowMode = Configs.uiTimeShowMode
         _uiFocusOptimize = Configs.uiFocusOptimize
         _uiScreenAutoCloseDelay = Configs.uiScreenAutoCloseDelay
+        _updateRemindEnable = Configs.updateRemindEnable
         _updateForceRemind = Configs.updateForceRemind
         _updateChannel = Configs.updateChannel
+        _updateDownloadRoute = Configs.updateDownloadRoute
         _videoPlayerUserAgent = Configs.videoPlayerUserAgent
         _videoPlayerLoadTimeout = Configs.videoPlayerLoadTimeout
         _videoPlayerAspectRatio = Configs.videoPlayerDisplayMode

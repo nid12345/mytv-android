@@ -124,6 +124,9 @@ object Configs {
         /** 是否显示内置的「潮汕节目回放」分组 */
         IPTV_CHAOSHAN_SOURCE_ENABLE,
 
+        /** 点播源（潮汕节目回放）是否自动连播下一个视频 */
+        IPTV_VOD_AUTO_PLAY_NEXT_ENABLE,
+
         /** 混合模式 */
         IPTV_HYBRID_MODE,
 
@@ -172,11 +175,17 @@ object Configs {
         UI_SCREEN_AUTO_CLOSE_DELAY,
 
         /** ==================== 更新 ==================== */
+        /** 升级提醒（检测到新版本时是否提醒） */
+        UPDATE_REMIND_ENABLE,
+
         /** 更新强提醒 */
         UPDATE_FORCE_REMIND,
 
         /** 更新通道 */
         UPDATE_CHANNEL,
+
+        /** 更新包下载线路 */
+        UPDATE_DOWNLOAD_ROUTE,
 
         /** ==================== 播放器 ==================== */
         /** 播放器 自定义ua */
@@ -423,6 +432,16 @@ object Configs {
         get() = SP.getBoolean(KEY.IPTV_CHAOSHAN_SOURCE_ENABLE.name, false)
         set(value) = SP.putBoolean(KEY.IPTV_CHAOSHAN_SOURCE_ENABLE.name, value)
 
+    /**
+     * 点播源自动连播
+     *
+     * 只对「潮汕节目回放」这类点播列表生效：一个视频播完自动播下一个
+     * （同分组内顺着播，本分组播完接下一分组）。直播源不受影响。
+     */
+    var iptvVodAutoPlayNextEnable: Boolean
+        get() = SP.getBoolean(KEY.IPTV_VOD_AUTO_PLAY_NEXT_ENABLE.name, true)
+        set(value) = SP.putBoolean(KEY.IPTV_VOD_AUTO_PLAY_NEXT_ENABLE.name, value)
+
     /** 当前订阅源（按内置源对齐后）的地址，作为按源记忆的键 */
     private val currentNormalizedSourceUrl: String
         get() = Constants.normalizeIptvSource(iptvSourceCurrent).url
@@ -528,6 +547,11 @@ object Configs {
         set(value) = SP.putLong(KEY.UI_SCREEN_AUTO_CLOSE_DELAY.name, value)
 
     /** ==================== 更新 ==================== */
+    /** 升级提醒：打开应用时自动检查，发现新版本就提醒（关掉后只能到设置里手动检查） */
+    var updateRemindEnable: Boolean
+        get() = SP.getBoolean(KEY.UPDATE_REMIND_ENABLE.name, true)
+        set(value) = SP.putBoolean(KEY.UPDATE_REMIND_ENABLE.name, value)
+
     /** 更新强提醒 */
     var updateForceRemind: Boolean
         get() = SP.getBoolean(KEY.UPDATE_FORCE_REMIND.name, false)
@@ -537,6 +561,13 @@ object Configs {
     var updateChannel: String
         get() = SP.getString(KEY.UPDATE_CHANNEL.name, "stable")
         set(value) = SP.putString(KEY.UPDATE_CHANNEL.name, value)
+
+    /** 更新包下载线路 */
+    var updateDownloadRoute: UpdateDownloadRoute
+        get() = UpdateDownloadRoute.fromValue(
+            SP.getInt(KEY.UPDATE_DOWNLOAD_ROUTE.name, UpdateDownloadRoute.AUTO.value)
+        )
+        set(value) = SP.putInt(KEY.UPDATE_DOWNLOAD_ROUTE.name, value.value)
 
     /** ==================== 播放器 ==================== */
     /** 播放器 自定义ua */
@@ -661,8 +692,24 @@ object Configs {
         }
     }
 
-    enum class VideoPlayerRenderMode(val value: Int, val label: String) {
-        /** SurfaceView */
+    /** 更新包下载线路 */
+    enum class UpdateDownloadRoute(val value: Int, val label: String) {
+        /** 自动：先直连，失败再走加速镜像 */
+        AUTO(0, "自动"),
+
+        /** 仅直连 */
+        DIRECT(1, "直连"),
+
+        /** 镜像优先：先走加速镜像，失败再直连 */
+        MIRROR(2, "镜像优先");
+
+        companion object {
+            fun fromValue(value: Int): UpdateDownloadRoute =
+                entries.firstOrNull { it.value == value } ?: AUTO
+        }
+    }
+
+    enum class VideoPlayerRenderMode(val value: Int, val label: String) {        /** SurfaceView */
         SURFACE_VIEW(0, "SurfaceView"),
 
         /** TextureView */

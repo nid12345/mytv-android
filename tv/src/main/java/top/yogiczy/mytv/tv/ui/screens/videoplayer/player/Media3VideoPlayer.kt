@@ -234,6 +234,12 @@ class Media3VideoPlayer(
                 }
 
                 triggerDuration(videoPlayer.duration)
+            } else if (playbackState == Player.STATE_ENDED) {
+                // 一个视频播到结尾（点播源才会出现）。停掉位置轮询，
+                // 再由上层决定是连播下一个还是就此停住
+                updatePositionJob?.cancel()
+                updatePositionJob = null
+                triggerEnded()
             }
 
             if (playbackState != Player.STATE_BUFFERING) {

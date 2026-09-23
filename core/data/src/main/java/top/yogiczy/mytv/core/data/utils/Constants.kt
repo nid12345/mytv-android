@@ -142,17 +142,63 @@ object Constants {
     const val EPG_REFRESH_TIME_THRESHOLD = 2
 
     /**
-     * Git最新版本信息
+     * 应用更新（走定制版自己的通道）
+     *
+     * 上游官方的更新接口发的是官方签名包（包名也不同，装上就是另一个应用），
+     * 定制版必须查自己的 Release：tag 形如 `custom-v1.7`，附件就是定制版 APK。
+     *
+     * GitHub 的接口与附件下载在国内经常直连不上，所以检查与下载都准备了镜像回退，
+     * 实测可用的加速前缀见 [GITHUB_MIRROR_GH_PROXY] / [GITHUB_MIRROR_GH_PROXY_NET]。
      */
+    const val CUSTOM_RELEASE_REPO = "nid12345/mytv-android"
+
+    /** GitHub 加速前缀：gh-proxy 同时支持接口与附件 */
+    const val GITHUB_MIRROR_GH_PROXY = "https://gh-proxy.com/"
+
+    /** GitHub 加速前缀：ghproxy 只代理文件（接口返回 403），仅用于下载回退 */
+    const val GITHUB_MIRROR_GH_PROXY_NET = "https://ghproxy.net/"
+
+    /** APK 下载可用的全部镜像前缀（不含直连） */
+    val RELEASE_DOWNLOAD_MIRRORS = listOf(
+        GITHUB_MIRROR_GH_PROXY,
+        GITHUB_MIRROR_GH_PROXY_NET,
+    )
+
+    /**
+     * 更新检查地址
+     *
+     * 每一项都是一串地址，「按顺序尝试，第一个成功的就算数」：
+     * stable 取最新正式版，beta 取最近的发布（含预发布）。
+     */
+    val RELEASE_CHECK_URLS = mapOf(
+        "stable" to releaseCheckUrls("releases/latest"),
+        "beta" to releaseCheckUrls("releases?per_page=5"),
+    )
+
+    private fun releaseCheckUrls(path: String): List<String> {
+        val api = "https://api.github.com/repos/$CUSTOM_RELEASE_REPO/$path"
+        // ghproxy.net 对 api.github.com 返回 403，所以接口链里只用 gh-proxy
+        return listOf(api, GITHUB_MIRROR_GH_PROXY + api)
+    }
+
+    /**
+     * 更新通道旧址（上游官方接口，已不再使用）
+     *
+     * 保留仅为兼容/参考：那条通道发的是官方签名包，定制版不能走。
+     */
+    @Deprecated("改用 RELEASE_CHECK_URLS（定制版自己的 Release）")
     val GIT_RELEASE_LATEST_URL = mapOf(
-        "stable" to "https://ghp.ci/https://raw.githubusercontent.com/yaoxieyoulei/mytv-android-update/main/tv-stable.json",
-        "beta" to "https://ghp.ci/https://raw.githubusercontent.com/yaoxieyoulei/mytv-android-update/main/tv-beta.json",
+        "stable" to "https://raw.githubusercontent.com/yaoxieyoulei/mytv-android-update/main/tv-stable.json",
+        "beta" to "https://raw.githubusercontent.com/yaoxieyoulei/mytv-android-update/main/tv-beta.json",
     )
 
     /**
      * GitHub加速代理地址
+     *
+     * 原来的 `ghp.ci` 已经停止服务（实测连接失败），会让下载地址变成死链，
+     * 这里留空表示直连；需要加速时由下载流程按 [RELEASE_DOWNLOAD_MIRRORS] 逐条回退。
      */
-    const val GITHUB_PROXY = "https://ghp.ci/"
+    const val GITHUB_PROXY = ""
 
     /**
      * HTTP请求重试次数

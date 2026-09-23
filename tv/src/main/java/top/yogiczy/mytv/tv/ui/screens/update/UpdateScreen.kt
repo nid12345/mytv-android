@@ -38,14 +38,15 @@ fun UpdateScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val packageInfo = rememberPackageInfo()
+    val currentVersion = packageInfo.versionName ?: "0.0.0"
     val latestFile = remember { File(Globals.cacheDir, "latest.apk") }
 
+    // 打开应用后自动检查更新（设置里关掉「升级提醒」就不查）
     LaunchedEffect(Unit) {
+        if (!settingsViewModel.updateRemindEnable) return@LaunchedEffect
+
         delay(3000)
-        updateViewModel.checkUpdate(
-            packageInfo.versionName ?: "0.0.0",
-            settingsViewModel.updateChannel
-        )
+        updateViewModel.checkUpdate(currentVersion, settingsViewModel.updateChannel)
 
         val latestRelease = updateViewModel.latestRelease
         if (
@@ -57,9 +58,20 @@ fun UpdateScreen(
             if (settingsViewModel.updateForceRemind) {
                 updateViewModel.visible = true
             } else {
-                Snackbar.show("发现新版本: v${latestRelease.version}")
+                Snackbar.show("发现新版本: v${latestRelease.version}（设置 → 更新 可升级）")
             }
         }
+    }
+
+    // 设置页点了「检查更新」：强制重新查一次
+    LaunchedEffect(updateViewModel.manualCheckRequest) {
+        if (updateViewModel.manualCheckRequest == 0) return@LaunchedEffect
+
+        updateViewModel.checkUpdate(
+            currentVersion,
+            settingsViewModel.updateChannel,
+            force = true,
+        )
     }
 
     val launcher =
@@ -105,8 +117,13 @@ fun UpdateScreen(
                 .pointerInput(Unit) { detectTapGestures { } },
             onDismissRequest = { updateViewModel.visible = false },
             releaseProvider = { updateViewModel.latestRelease },
+            currentVersionProvider = { currentVersion },
             isUpdateAvailableProvider = { updateViewModel.isUpdateAvailable },
+            isCheckingProvider = { updateViewModel.isChecking },
+            isUpdatingProvider = { updateViewModel.isUpdating },
+            downloadProgressProvider = { updateViewModel.downloadProgress },
             onUpdateAndInstall = {
+                // 下载在意料之内会持续一会儿，先收起面板，进度用消息提示
                 updateViewModel.visible = false
                 coroutineScope.launch(Dispatchers.IO) {
                     updateViewModel.downloadAndUpdate(latestFile)

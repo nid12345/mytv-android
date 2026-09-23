@@ -52,6 +52,7 @@ import top.yogiczy.mytv.tv.ui.material.rememberDebounceState
 import top.yogiczy.mytv.tv.ui.screens.channel.components.ChannelItemLogo
 import top.yogiczy.mytv.tv.ui.screens.settings.LocalSettings
 import top.yogiczy.mytv.tv.ui.theme.MyTVTheme
+import top.yogiczy.mytv.tv.ui.utils.getOrNullAt
 import top.yogiczy.mytv.tv.ui.utils.handleKeyEvents
 import top.yogiczy.mytv.tv.ui.utils.ifElse
 import top.yogiczy.mytv.tv.ui.utils.saveFocusRestorer
@@ -78,21 +79,33 @@ fun ClassicChannelItemList(
     val channelGroup = channelGroupProvider()
     val channelList = channelListProvider()
     val initialChannel = initialChannelProvider()
+
+    // 列表每次重组都会重新构造（收藏列表尤其如此），FocusRequester / 焦点状态
+    // 都按「频道名序列」缓存：列表内容没变就不重建，避免滚动时实例被反复替换
+    val channelNames = channelList.map { it.name }
     val itemFocusRequesterList =
-        remember(channelList) { List(channelList.size) { FocusRequester() } }
+        remember(channelNames) { List(channelNames.size) { FocusRequester() } }
 
     var hasFocused by rememberSaveable { mutableStateOf(!channelList.contains(initialChannel)) }
-    var focusedChannel by remember(channelList) {
+    var focusedChannel by remember(channelNames) {
         mutableStateOf(
             if (hasFocused) channelList.firstOrNull() ?: Channel() else initialChannel
         )
+    }
+
+    // 线路测速完成后整份列表会被替换（频道对象全是新的），按名字把记住的频道
+    // 重新绑到新对象上：否则它不在列表里，下面按名字找不到、下标取值为 -1
+    LaunchedEffect(channelList) {
+        if (channelList.any { it.name == focusedChannel.name }) return@LaunchedEffect
+        channelList.firstOrNull { it.name == initialChannel.name }
+            ?.let { focusedChannel = it }
     }
 
     val onChannelFocusedDebounce = rememberDebounceState(wait = 100L) {
         onChannelFocused(focusedChannel)
     }
 
-    val listState = remember(channelGroup) {
+    val listState = remember(channelGroup.name) {
         LazyListState(
             if (hasFocused) 0
             else max(0, channelList.indexOf(initialChannel) - 2)
@@ -107,6 +120,7 @@ fun ClassicChannelItemList(
     val firstFocusRequester = remember { FocusRequester() }
     val lastFocusRequester = remember { FocusRequester() }
     fun scrollToFirst() {
+        if (channelList.isEmpty()) return
         coroutineScope.launch {
             listState.scrollToItem(0)
             firstFocusRequester.saveRequestFocus()
@@ -114,6 +128,7 @@ fun ClassicChannelItemList(
     }
 
     fun scrollToLast() {
+        if (channelList.isEmpty()) return
         coroutineScope.launch {
             listState.scrollToItem(channelList.lastIndex)
             lastFocusRequester.saveRequestFocus()
@@ -130,7 +145,9 @@ fun ClassicChannelItemList(
             .ifElse(
                 LocalSettings.current.uiFocusOptimize,
                 Modifier.saveFocusRestorer {
-                    itemFocusRequesterList[channelList.indexOf(focusedChannel)]
+                    // 按名字找，找不到就交给默认焦点（不再有 -1 下标越界）
+                    val idx = channelList.indexOfFirst { it.name == focusedChannel.name }
+                    itemFocusRequesterList.getOrNullAt(idx) ?: FocusRequester.Default
                 },
             ),
         state = listState,
