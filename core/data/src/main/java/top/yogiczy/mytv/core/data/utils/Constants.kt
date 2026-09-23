@@ -94,34 +94,38 @@ object Constants {
     /**
      * 节目单来源
      *
-     * 第一个是默认源，其余作为「补齐源」：默认源对某些频道没有节目时，
-     * 会自动从补齐源里取这些频道的节目（见 EpgRepository）。
+     * 第一个是默认源，其余作为「备用源」：
+     * - 默认源整体不可用时，自动改用能用的备用源（见 EpgRepository）；
+     * - 默认源对某些频道没有节目时，也会从备用源补齐。
+     *
+     * 这里**不要**只放一个源——节目单接口的可用性很不稳定（2026-09 实测：
+     * 老牌的 `epg.51zmt.top:8000/e.xml` 已经 302 跳到一个域名停放页，返回的是 HTML，
+     * 解析必然失败），多堆几个源才有容错空间。
+     *
+     * 各源实测情况（2026-09-23，本机网络）：
+     * - 112114 主站：本机不可达，但它是国内最常用、更新最勤的一份，排第一
+     * - 112114 CDN 转发（epg.163189.xyz）：✔ 可用，约 3MB / 2.7s
+     * - EPG.pw：✔ 可用，约 6.4MB / 4.1s
+     * - Fanmingming：本机不可达，保留作为覆盖
+     * - 老张的 EPG（51zmt）：✘ 已失效，从内置列表移除（老配置会在读取时自动迁移走）
      */
     val EPG_SOURCE_LIST = EpgSourceList(
         listOf(
-            /**
-             * 老张的EPG，国内（四川电信）直连可达，作为默认节目单。
-             *
-             * 这里必须用实时生成的 `e.xml`：同目录下的 `e.xml.gz` 是预生成文件，
-             * 拿到手时内容可能已经停在生成时刻，凌晨就会出现「当前时刻查不到节目」的断档。
-             */
             EpgSource(
-                name = "默认节目单 老张的EPG",
-                url = "http://epg.51zmt.top:8000/e.xml",
-            ),
-            /**
-             * 备用/补齐节目单：频道更多（含翡翠台等），国内可直连
-             */
-            EpgSource(
-                name = "备用节目单 112114",
+                name = "默认节目单 112114",
                 url = "https://epg.112114.xyz/pp.xml",
             ),
-            /**
-             * 备用/补齐节目单：覆盖天数更长，海外站点
-             */
+            EpgSource(
+                name = "备用节目单 112114 CDN转发",
+                url = "https://epg.163189.xyz/pp.xml",
+            ),
             EpgSource(
                 name = "备用节目单 Fanmingming",
                 url = "https://live.fanmingming.com/e.xml",
+            ),
+            EpgSource(
+                name = "备用节目单 EPG.pw",
+                url = "https://epg.pw/xmltv/epg_CN.xml",
             ),
         )
     )
@@ -129,9 +133,27 @@ object Constants {
     /**
      * 历史默认节目单地址
      *
-     * 老配置里存的是这个预生成地址，读取配置时会被迁移成实时地址。
+     * 老配置里存的可能是这些地址：`.gz` 是服务器预生成的旧文件（内容常停在生成时刻），
+     * 去掉 `.gz` 的实时地址后来也失效了（跳转到一个停放页、返回 HTML）。
+     * 读取配置时统一迁移到 [EPG_SOURCE_LIST] 的第一个。
      */
+    val EPG_SOURCE_LEGACY_URLS = setOf(
+        "http://epg.51zmt.top:8000/e.xml",
+        "http://epg.51zmt.top:8000/e.xml.gz",
+    )
+
+    /** 兼容旧调用：单独要一个「老的 .gz 地址」时用（历史上被写进过配置） */
     const val EPG_SOURCE_LEGACY_URL = "http://epg.51zmt.top:8000/e.xml.gz"
+
+    /**
+     * 节目单下载超时（毫秒）
+     *
+     * 一份完整节目单动辄 3~6MB，电视盒子上慢速网络要几十秒；
+     * 默认的 10 秒读超时会让大源直接失败，这里放宽。
+     */
+    const val EPG_FETCH_CONNECT_TIMEOUT = 15_000L
+    const val EPG_FETCH_READ_TIMEOUT = 60_000L
+
 
     /**
      * 节目单刷新时间阈值（小时）

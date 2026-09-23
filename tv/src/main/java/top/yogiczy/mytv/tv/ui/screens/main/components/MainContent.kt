@@ -29,11 +29,13 @@ import top.yogiczy.mytv.core.data.repositories.epg.EpgRepository
 import top.yogiczy.mytv.core.data.repositories.iptv.IptvRepository
 import top.yogiczy.mytv.core.data.utils.ChannelUtil
 import top.yogiczy.mytv.core.data.utils.Constants
+import top.yogiczy.mytv.core.util.utils.ApkInstaller
 import top.yogiczy.mytv.tv.ui.material.PopupContent
 import top.yogiczy.mytv.tv.ui.material.Snackbar
 import top.yogiczy.mytv.tv.ui.material.Visible
 import top.yogiczy.mytv.tv.ui.material.popupable
 import top.yogiczy.mytv.tv.ui.screens.applauncher.launchApp
+import top.yogiczy.mytv.tv.ui.screens.apkmanager.ApkInstallDialog
 import top.yogiczy.mytv.tv.ui.screens.channel.ChannelNumberSelectScreen
 import top.yogiczy.mytv.tv.ui.screens.channel.ChannelScreen
 import top.yogiczy.mytv.tv.ui.screens.channel.ChannelTempScreen
@@ -60,6 +62,8 @@ import top.yogiczy.mytv.tv.ui.utils.Configs
 import top.yogiczy.mytv.tv.ui.utils.captureBackKey
 import top.yogiczy.mytv.tv.ui.utils.handleDragGestures
 import top.yogiczy.mytv.tv.ui.utils.handleKeyEvents
+import top.yogiczy.mytv.tv.utlis.ApkInstallHelper
+import top.yogiczy.mytv.tv.utlis.ApkInstallPrompt
 
 @Composable
 fun MainContent(
@@ -542,6 +546,43 @@ fun MainContent(
     )
 
     UpdateScreen()
+
+    // 收到推送过来的安装包：弹「是否安装」确认框（当贝市场那种体验），
+    // 用户点「立即安装」才去调安装；未放行「安装未知应用」时主按钮变成「去放行」
+    PopupContent(
+        visibleProvider = { ApkInstallPrompt.pending != null },
+        onDismissRequest = { ApkInstallPrompt.clear() },
+    ) {
+        ApkInstallDialog(
+            apkProvider = { ApkInstallPrompt.pending },
+            errorProvider = { ApkInstallPrompt.lastError },
+            needPermissionProvider = { !ApkInstaller.canRequestPackageInstalls(context) },
+            onInstall = {
+                val apk = ApkInstallPrompt.pending
+                if (apk != null) {
+                    when (val error = ApkInstallHelper.install(context, apk.path)) {
+                        null -> {
+                            Snackbar.show("正在调起安装：${apk.name}")
+                            ApkInstallPrompt.clear()
+                        }
+
+                        ApkInstallHelper.NEED_UNKNOWN_SOURCE_PERMISSION ->
+                            ApkInstallPrompt.fail("需要先允许本应用安装应用")
+
+                        else -> ApkInstallPrompt.fail(error)
+                    }
+                }
+            },
+            onOpenPermissionSetting = {
+                if (ApkInstaller.openUnknownSourceSetting(context)) {
+                    Snackbar.show("请在系统设置里允许 MyTV 安装应用")
+                } else {
+                    ApkInstallPrompt.fail("当前系统没有该设置页，请到系统设置里手动放行")
+                }
+            },
+            onDismissRequest = { ApkInstallPrompt.clear() },
+        )
+    }
 
     Visible({ settingsViewModel.debugShowFps }) { MonitorScreen() }
 }

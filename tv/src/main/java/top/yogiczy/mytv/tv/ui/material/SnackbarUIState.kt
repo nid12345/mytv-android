@@ -125,17 +125,21 @@ object Snackbar {
         duration: Long = 2300,
         id: String = UUID.randomUUID().toString(),
     ) {
-        SnackbarUIState.I.show(
-            text = text,
-            showLeadingIcon = showLeadingIcon,
-            leadingIcon = leadingIcon,
-            leadingLoading = leadingLoading,
-            showTrailingIcon = showTrailingIcon,
-            trailingIcon = trailingIcon,
-            trailingLoading = trailingLoading,
-            type = type,
-            duration = duration,
-            id = id,
-        )
+        // 界面还没起来时（例如后台收到安装结果广播）直接忽略：
+        // SnackbarUIState.I 是 lateinit，访问它会把异常抛到调用方的线程上
+        runCatching {
+            SnackbarUIState.I.show(
+                text = text,
+                showLeadingIcon = showLeadingIcon,
+                leadingIcon = leadingIcon,
+                leadingLoading = leadingLoading,
+                showTrailingIcon = showTrailingIcon,
+                trailingIcon = trailingIcon,
+                trailingLoading = trailingLoading,
+                type = type,
+                duration = duration,
+                id = id,
+            )
+        }
     }
 }

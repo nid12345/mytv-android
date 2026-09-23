@@ -27,6 +27,7 @@ import top.yogiczy.mytv.tv.ui.material.SnackbarType
 import top.yogiczy.mytv.tv.ui.screens.settings.SettingsViewModel
 import top.yogiczy.mytv.tv.ui.screens.update.components.UpdateContent
 import top.yogiczy.mytv.tv.ui.utils.captureBackKey
+import top.yogiczy.mytv.tv.utlis.ApkInstallHelper
 import java.io.File
 
 @Composable
@@ -74,11 +75,29 @@ fun UpdateScreen(
         )
     }
 
+    // 下载完成后统一走这条安装逻辑：会话安装优先（兼容性最好），失败再把原因告诉用户
+    fun installDownloadedApk() {
+        when (val error = ApkInstallHelper.install(context, latestFile.path)) {
+            null -> Snackbar.show("正在调起安装")
+
+            ApkInstallHelper.NEED_UNKNOWN_SOURCE_PERMISSION -> {
+                val opened = ApkInstaller.openUnknownSourceSetting(context)
+                Snackbar.show(
+                    if (opened) "请先允许 MyTV 安装应用，再点一次「立即更新」"
+                    else "系统没有该设置页，请到系统设置里手动放行未知来源",
+                    type = SnackbarType.ERROR,
+                )
+            }
+
+            else -> Snackbar.show("调起安装失败：$error", type = SnackbarType.ERROR)
+        }
+    }
+
     val launcher =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (context.packageManager.canRequestPackageInstalls()) {
-                    ApkInstaller.installApk(context, latestFile.path)
+                    installDownloadedApk()
                 } else {
                     Snackbar.show("未授予安装权限", type = SnackbarType.ERROR)
                 }
@@ -89,10 +108,10 @@ fun UpdateScreen(
         if (!updateViewModel.updateDownloaded) return@LaunchedEffect
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            ApkInstaller.installApk(context, latestFile.path)
+            installDownloadedApk()
         } else {
             if (context.packageManager.canRequestPackageInstalls()) {
-                ApkInstaller.installApk(context, latestFile.path)
+                installDownloadedApk()
             } else {
                 try {
                     val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)

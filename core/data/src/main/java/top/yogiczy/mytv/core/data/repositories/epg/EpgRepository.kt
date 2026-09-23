@@ -17,19 +17,22 @@ import top.yogiczy.mytv.core.data.network.await
 import top.yogiczy.mytv.core.data.repositories.FileCacheRepository
 import top.yogiczy.mytv.core.data.repositories.epg.fetcher.EpgFetcher
 import top.yogiczy.mytv.core.data.utils.ChannelName
+import top.yogiczy.mytv.core.data.utils.Constants
 import top.yogiczy.mytv.core.data.utils.Logger
 import java.io.StringReader
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 /**
  * 节目单获取
  *
- * 支持「主源 + 补齐源」：
- * 1. 主源里「当前时刻查不到正在播的节目」的频道，会依次从补齐源取同名频道的节目补上，
- *    这样即使某个源缺 CCTV1、翡翠台、海南卫视 之类的频道，界面上也不会缺节目单；
- * 2. 主源整体不可用（例如源站给的是未更新的旧文件）时，由补齐源兜底。
+ * 支持「主源 + 备用源」：
+ * 1. **主源整体不可用时自动改用备用源**——超时、返回的不是 XML（源失效时常见表现是
+ *    跳到一个停放页返回 HTML）、解析不出任何节目，都算该源不可用，会继续试下一个；
+ * 2. 主源里「当前时刻查不到正在播的节目」的频道，会依次从备用源取同名频道的节目补上；
+ * 3. 所有来源都不可用才报错，并把**每个源的失败原因**带在异常里，便于定位。
  *
  * 另外 [getEpgList] **不会**再因为「未到刷新时间点」返回空节目单——
  * 老逻辑在凌晨 0 点到刷新阈值之间会让整个节目单凭空消失。
@@ -42,6 +45,13 @@ class EpgRepository(
 
     /** 参与聚合的节目单来源（主源排第一，按 url 去重） */
     private val sources: List<EpgSource> = (listOf(source) + fallbackSources).distinctBy { it.url }
+
+    /** 本次实际提供了数据的来源（第一个可用的源），界面据此提示「已自动改用备用节目表」 */
+    var lastUsedSource: EpgSource? = null
+        private set
+
+    /** 各来源本次的失败原因（全部失败时用来给出可读的诊断） */
+    val sourceErrors = linkedMapOf<String, String>()
 
     private val parsedCaches: Map<String, EpgParsedCache> =
         sources.associate { it.url to EpgParsedCache(it.url) }
@@ -165,13 +175,32 @@ class EpgRepository(
             val beforeThreshold =
                 Calendar.getInstance().get(Calendar.HOUR_OF_DAY) < refreshTimeThreshold
 
+            lastUsedSource = null
+            sourceErrors.clear()
+
             var merged: EpgList? = null
 
             for (epgSource in sources) {
-                // 单个来源不可用（超时、返回旧文件、格式异常）时跳过，不要让整份节目单一起消失
+                // 单个来源不可用（超时、返回 HTML、格式异常）时跳过，改试下一个，
+                // 不要让整份节目单一起消失
                 val loaded = runCatching { load(epgSource, filteredChannels, beforeThreshold) }
-                    .onFailure { log.e("节目单来源不可用：${epgSource.name}", it) }
-                    .getOrNull() ?: continue
+                    .onFailure {
+                        val reason = it.message ?: it.javaClass.simpleName
+                        sourceErrors[epgSource.name] = reason
+                        log.e("节目单来源不可用：${epgSource.name}（$reason）", it)
+                    }
+                    .getOrNull()
+
+                // 「拿到了但一个节目都没有」同样算这个源不可用——
+                // 源失效时经常返回一个能解析但内容为空的响应，继续试下一个源
+                if (loaded == null) continue
+                if (loaded.isEmpty()) {
+                    sourceErrors[epgSource.name] = "没有解析出任何节目"
+                    log.w("节目单来源没有内容：${epgSource.name}")
+                    continue
+                }
+
+                if (lastUsedSource == null) lastUsedSource = epgSource
 
                 val current = merged
                 if (current == null) {
@@ -187,11 +216,12 @@ class EpgRepository(
                 merged = current.fillMissingFrom(loaded, missing)
             }
 
-            val epgList = merged ?: throw Exception("所有节目单来源都不可用")
+            val epgList = merged ?: throw Exception(buildFailureMessage())
 
             log.i(
                 buildString {
-                    append("节目单就绪：来源=").append(sources.size).append("个")
+                    append("节目单就绪：实际来源=").append(lastUsedSource?.name ?: "?")
+                    append("，可用来源=").append(sources.size).append("个")
                     append("，频道").append(epgList.size).append("个")
                     append("，节目").append(epgList.sumOf { it.programmeList.size }).append("个")
                     if (filteredChannels.isNotEmpty()) {
@@ -205,7 +235,17 @@ class EpgRepository(
             return@withContext epgList
         } catch (ex: Exception) {
             log.e("获取节目单失败", ex)
-            throw Exception(ex)
+            throw Exception(ex.message ?: "获取节目单失败", ex)
+        }
+    }
+
+    /** 全部来源都不可用时，把每个来源的失败原因拼成一条可读的消息 */
+    private fun buildFailureMessage(): String = buildString {
+        append("所有节目单来源都不可用")
+        if (sourceErrors.isNotEmpty()) {
+            append("（")
+            append(sourceErrors.entries.joinToString("；") { "${it.key}：${it.value}" })
+            append("）")
         }
     }
 
@@ -341,22 +381,43 @@ private class EpgXmlRepository(
     private suspend fun fetchXml(): String {
         log.i("获取节目单xml: $url")
 
-        val client = OkHttpClient()
+        // 一份完整节目单动辄 3~6MB，电视盒子上慢速网络要几十秒，
+        // 用 OkHttp 默认的 10 秒读超时会让大源直接失败
+        val client = OkHttpClient.Builder()
+            .connectTimeout(Constants.EPG_FETCH_CONNECT_TIMEOUT, TimeUnit.MILLISECONDS)
+            .readTimeout(Constants.EPG_FETCH_READ_TIMEOUT, TimeUnit.MILLISECONDS)
+            .build()
         val request = Request.Builder().url(url).build()
 
-        try {
-            val response = client.newCall(request).await()
+        val response = try {
+            client.newCall(request).await()
+        } catch (ex: Exception) {
+            // 超时 / DNS / TLS 各有各的原因，别笼统说成「请检查网络连接」
+            throw Exception(
+                "请求失败：${ex.javaClass.simpleName} ${ex.message.orEmpty()}".trim(), ex
+            )
+        }
 
-            if (!response.isSuccessful) throw Exception("${response.code}: ${response.message}")
+        if (!response.isSuccessful) throw Exception("HTTP ${response.code} ${response.message}")
 
-            val fetcher = EpgFetcher.instances.first { it.isSupport(url) }
-            return withContext(Dispatchers.IO) {
-                fetcher.fetch(response)
+        val body = try {
+            withContext(Dispatchers.IO) {
+                EpgFetcher.instances.first { it.isSupport(url) }.fetch(response)
             }
         } catch (ex: Exception) {
-            log.e("获取节目单xml失败", ex)
-            throw Exception("获取节目单xml失败，请检查网络连接", ex)
+            throw Exception("读取响应失败：${ex.message ?: ex.javaClass.simpleName}", ex)
         }
+
+        // 源失效时最常见的表现是「跳到停放页 / 错误页」并返回 HTML，
+        // 这种留到 XML 解析阶段会抛出很难看懂的错误，这里提前识别并给出明确原因
+        val head = body.removePrefix("\uFEFF").trimStart()
+        if (!head.startsWith("<?xml") && !head.startsWith("<tv")) {
+            throw Exception(
+                "返回的不是节目单XML（开头：${head.take(50).replace('\n', ' ')}）"
+            )
+        }
+
+        return body
     }
 
     /**

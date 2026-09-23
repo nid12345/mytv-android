@@ -467,9 +467,10 @@ object Configs {
                     .ifBlank { Json.encodeToString(Constants.EPG_SOURCE_LIST.first()) }
             )
 
-            // 老默认源指向服务器上预生成的 e.xml.gz，内容经常停在生成那一刻，
-            // 凌晨会出现「当前时刻查不到节目」，这里迁移到实时生成的 e.xml
-            return if (source.url == Constants.EPG_SOURCE_LEGACY_URL)
+            // 老配置用的默认源已经失效：`.gz` 是服务器预生成的旧文件（内容停在生成时刻），
+            // 去掉 `.gz` 的实时地址后来也不可用了（跳转到停放页、返回 HTML）。
+            // 这里统一迁移到当前内置列表的第一个，老用户不用自己去设置里改。
+            return if (source.url in Constants.EPG_SOURCE_LEGACY_URLS)
                 Constants.EPG_SOURCE_LIST.first()
             else source
         }

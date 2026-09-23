@@ -108,6 +108,17 @@ class MainViewModel : ViewModel() {
 
         /** 潮汕节目回放加载超时，超时就算了，不拖累默认源显示 */
         private const val CHAOSHAN_LOAD_TIMEOUT = 8_000L
+
+        /**
+         * 节目单整条链都失败后的重试次数
+         *
+         * 各个节目单源本身已经在 [EpgRepository] 内部逐个试过一遍了，
+         * 这里只补一次，避免把「所有源都挂了」拖成几分钟的循环重试。
+         */
+        private const val EPG_RETRY_COUNT = 1L
+
+        /** 节目单重试间隔 */
+        private const val EPG_RETRY_INTERVAL = 3_000L
     }
 
     private suspend fun refreshChannel() {
@@ -211,31 +222,45 @@ class MainViewModel : ViewModel() {
     private suspend fun refreshEpg() {
         if (!Configs.epgEnable) return
 
-        if (_uiState.value is MainUiState.Ready) {
-            EpgList.clearCache()
-            val channelGroupList = (_uiState.value as MainUiState.Ready).channelGroupList
+        val ready = _uiState.value as? MainUiState.Ready ?: return
 
-            flow {
-                emit(
-                    EpgRepository(
-                        source = Configs.epgSourceCurrent,
-                        // 其余节目单来源作为补齐源：主源缺哪个频道，就从这里补哪个频道
-                        fallbackSources = Constants.EPG_SOURCE_LIST,
-                    ).getEpgList(
-                        filteredChannels = channelGroupList.channelList.map { it.epgName },
-                        refreshTimeThreshold = Configs.epgRefreshTimeThreshold,
-                    )
+        EpgList.clearCache()
+
+        val configuredSource = Configs.epgSourceCurrent
+        // 主源 + 其余内置源作为备用：主源整体不可用时会自动改用能用的那个，
+        // 并且把「真正用上的源」记在 repository 上（下面据此提示 + 落配置）
+        val repository = EpgRepository(
+            source = configuredSource,
+            fallbackSources = Constants.EPG_SOURCE_LIST,
+        )
+
+        val filteredChannels = ready.channelGroupList.channelList.map { it.epgName }
+
+        flow {
+            emit(repository.getEpgList(filteredChannels, Configs.epgRefreshTimeThreshold))
+        }
+            // 备用源已经在内部逐个试过一遍了，这里再重试整条链意义不大，
+            // 重试次数太多反而会让界面长时间没有节目单
+            .retry(EPG_RETRY_COUNT) { delay(EPG_RETRY_INTERVAL); true }
+            .catch { ex ->
+                emit(EpgList())
+                Snackbar.show(
+                    "节目单获取失败：${ex.message?.take(100) ?: "请检查网络连接"}",
+                    type = SnackbarType.ERROR,
                 )
             }
-                .retry(Constants.HTTP_RETRY_COUNT) { delay(Constants.HTTP_RETRY_INTERVAL); true }
-                .catch {
-                    emit(EpgList())
-                    Snackbar.show("节目单获取失败，请检查网络连接", type = SnackbarType.ERROR)
-                }
-                .map { epgList ->
-                    _uiState.value = (_uiState.value as MainUiState.Ready).copy(epgList = epgList)
-                }
-                .collect()
+            .map { epgList ->
+                _uiState.value = (_uiState.value as MainUiState.Ready).copy(epgList = epgList)
+            }
+            .collect()
+
+        // 主源不可用时实际用的是备用源：切过去并告知，
+        // 免得每次启动都先去撞一遍那个坏源（既有等待，又刷不到节目单）
+        val usedSource = repository.lastUsedSource
+        if (usedSource != null && usedSource.url != configuredSource.url) {
+            Configs.epgSourceCurrent = usedSource
+            Configs.notifyConfigPushed()
+            Snackbar.show("节目单主源不可用，已自动改用备用源：${usedSource.name}")
         }
     }
 }

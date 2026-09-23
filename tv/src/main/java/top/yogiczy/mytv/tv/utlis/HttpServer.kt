@@ -22,7 +22,6 @@ import top.yogiczy.mytv.core.data.utils.Constants
 import top.yogiczy.mytv.core.data.utils.Globals
 import top.yogiczy.mytv.core.data.utils.Loggable
 import top.yogiczy.mytv.core.data.utils.Logger
-import top.yogiczy.mytv.core.util.utils.ApkInstaller
 import top.yogiczy.mytv.core.util.utils.humanizeBytes
 import top.yogiczy.mytv.tv.ui.material.Snackbar
 import top.yogiczy.mytv.tv.ui.material.SnackbarType
@@ -321,8 +320,20 @@ object HttpServer : Loggable() {
         val contentLength = request.headers["Content-Length"]?.toLong() ?: 1
         var hasReceived = 0L
 
+        // 上传时的原始文件名（弹窗与安装包管理里都按它显示，比统一的「推送安装包.apk」清楚得多）
+        var uploadedFileName = "推送安装包.apk"
+
         body.setMultipartCallback { part ->
             if (part.isFile) {
+                // 用上传时的原始文件名；顺手清掉路径分隔符等不能进文件名的字符
+                part.filename?.takeIf { it.isNotBlank() }?.let { name ->
+                    val cleaned = name
+                        .substringAfterLast('/')
+                        .substringAfterLast('\\')
+                        .replace(Regex("[^A-Za-z0-9._\\-\\u4e00-\\u9fa5]"), "_")
+                    if (cleaned.isNotBlank()) uploadedFileName = cleaned
+                }
+
                 body.setDataCallback { _, bb ->
                     val byteArray = bb.allByteArray
                     hasReceived += byteArray.size
@@ -343,19 +354,13 @@ object HttpServer : Loggable() {
                 os.flush()
                 os.close()
 
-                // 持久保存安装包，并立即调起系统安装界面（用持久副本，避免缓存被清理后装不上）
-                val item = ApkPackageManager.saveUploadedApk(
-                    context, uploadedApkFile, "推送安装包.apk"
-                )
-                Snackbar.show("安装包已保存：${item.name}（${item.size.humanizeBytes()}）")
+                // 持久保存安装包，文件名用上传时的原名（弹窗里能一眼看出是哪个包）
+                val item = ApkPackageManager.saveUploadedApk(context, uploadedApkFile, uploadedFileName)
+                Snackbar.show("已收到安装包：${item.name}（${item.size.humanizeBytes()}）")
 
-                val installError = ApkInstaller.installApk(context, item.path)
-                if (installError != null) {
-                    Snackbar.show(
-                        "未能调起安装界面：$installError。可在「推送 → 安装包管理」里重试",
-                        type = SnackbarType.ERROR,
-                    )
-                }
+                // 不再直接去调安装器：先弹「是否安装」确认框，用户点了「立即安装」才装。
+                // 之前直接调起、失败时只留一句提示，用户连文件有没有收到都不确定。
+                ApkInstallPrompt.request(item)
             }.onFailure {
                 log.e("安装包处理失败", it)
                 Snackbar.show("安装包处理失败：${it.message}", type = SnackbarType.ERROR)

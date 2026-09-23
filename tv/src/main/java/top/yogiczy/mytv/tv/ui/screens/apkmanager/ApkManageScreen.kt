@@ -37,6 +37,7 @@ import top.yogiczy.mytv.tv.ui.utils.focusOnLaunchedSaveable
 import top.yogiczy.mytv.tv.ui.utils.handleKeyEvents
 import top.yogiczy.mytv.tv.ui.utils.ifElse
 import top.yogiczy.mytv.tv.utlis.ApkItem
+import top.yogiczy.mytv.tv.utlis.ApkInstallHelper
 import top.yogiczy.mytv.tv.utlis.ApkPackageManager
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -135,11 +136,20 @@ fun ApkManageScreen(
                     apk = apk,
                     dateText = dateFormat.format(Date(apk.addedAt)),
                     onInstall = {
-                        val error = ApkInstaller.installApk(context, apk.path)
-                        if (error == null) {
-                            Snackbar.show("正在调起安装：${apk.name}")
-                        } else {
-                            Snackbar.show("调起安装失败：$error", type = SnackbarType.ERROR)
+                        when (val error = ApkInstallHelper.install(context, apk.path)) {
+                            null -> Snackbar.show("正在调起安装：${apk.name}")
+
+                            // 没放行「安装未知应用」时系统会直接拒绝，这里顺手把用户送到设置页
+                            ApkInstallHelper.NEED_UNKNOWN_SOURCE_PERMISSION -> {
+                                val opened = ApkInstaller.openUnknownSourceSetting(context)
+                                Snackbar.show(
+                                    if (opened) "请先允许 MyTV 安装应用，再回来点一次安装"
+                                    else "系统没有该设置页，请到系统设置里手动放行",
+                                    type = SnackbarType.ERROR,
+                                )
+                            }
+
+                            else -> Snackbar.show("调起安装失败：$error", type = SnackbarType.ERROR)
                         }
                     },
                     onDelete = {
